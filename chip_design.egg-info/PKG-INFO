@@ -1,3 +1,15 @@
+Metadata-Version: 2.4
+Name: chip-design
+Version: 0.1.0
+Summary: 芯片设计AI优化工具包 – AI-assisted chip design optimization toolkit
+License: MIT
+Keywords: chip-design,EDA,VLSI,placement,routing,timing
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+
 # 芯片设计 AI 优化工具包
 
 > **Chip Design AI Optimization Toolkit** — 让 AI 帮助您完成芯片设计的关键优化任务。
