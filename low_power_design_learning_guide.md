@@ -33,6 +33,8 @@
 
 ## 第一阶段：低功耗基础理论
 
+> 📖 **[查看详细版 →](docs/01_fundamentals.md)** 包含：完整功耗物理推导、毛刺功耗分析、PVT 影响详解、功耗度量方法、Landauer 极限、练习题
+
 ### 1.1 功耗来源与分类
 
 #### 动态功耗（Dynamic Power）
@@ -92,6 +94,8 @@
 ---
 
 ## 第二阶段：低功耗架构设计
+
+> 📖 **[查看详细版 →](docs/02_architecture.md)** 包含：DVFS Controller RTL、Power Gating 完整时序图、Power Switch 尺寸设计、Q-Channel/P-Channel RTL 示例、PMU 寄存器映射、移动 SoC 架构案例
 
 ### 2.1 电压域划分（Voltage Domain Partitioning）
 
@@ -264,6 +268,8 @@ Q-Channel 状态转换：
 
 ## 第三阶段：低功耗RTL设计
 
+> 📖 **[查看详细版 →](docs/03_rtl_design.md)** 包含：Clock Gating 全部编码模式与反模式、操作数隔离完整示例、Gray Code/Bus Invert 编码、Memory Bank 控制器 RTL、状态机低功耗编码、PMU Domain Controller 完整 RTL、RTL 审查 Checklist
+
 ### 3.1 RTL 编码中的低功耗技巧
 
 #### Clock Gating（时钟门控）
@@ -389,6 +395,8 @@ PMU 的核心功能：
 ---
 
 ## 第四阶段：低功耗验证（UPF）
+
+> 📖 **[查看详细版 →](docs/04_upf_verification.md)** 包含：UPF 所有命令详细参数说明、层次化 UPF 示例、UPF vs CPF 对比、完整 UVM 低功耗 Testbench 框架、SVA 断言库、覆盖率模型、常见错误调试、完整 SoC UPF 示例项目
 
 ### 4.1 UPF 基础（IEEE 1801 / Unified Power Format）
 
@@ -618,6 +626,8 @@ endclass
 
 ## 第五阶段：低功耗实现（综合与后端）
 
+> 📖 **[查看详细版 →](docs/05_implementation.md)** 包含：DC/Genus 完整低功耗综合脚本、Clock Gating 策略调优、Multi-Vt 优化流程、Power Grid 层次结构、Power Switch 物理实现、ICC2 后端脚本、IR Drop 分析详解、PTPX 完整功耗分析脚本与报告解读
+
 ### 5.1 低功耗综合（Power-Aware Synthesis）
 
 #### 综合流程
@@ -773,6 +783,8 @@ RTL/Gate Netlist ──→ │ 仿真获取     │
 
 ## 第六阶段：EDA工具实战
 
+> 📖 **[查看详细版 →](docs/06_eda_tools.md)** 包含：VCS/Xcelium/Questa 完整编译运行命令、DC 所有低功耗报告命令、Voltus 功耗分析脚本、Conformal LP 等价性验证、VC LP 规则检查、完整数据流图、UPF 演进说明、低功耗设计 Makefile
+
 ### 6.1 Synopsys 工具链
 
 #### 设计流程与工具对应
@@ -901,6 +913,8 @@ write_power_intent -1801 -output post_synth.upf
 ---
 
 ## 第七阶段：进阶与前沿方向
+
+> 📖 **[查看详细版 →](docs/07_advanced.md)** 包含：FinFET/GAA/CFET 低功耗特性详解、互连功耗分析、近阈值计算设计挑战、Digital LDO/AVS 架构、MRAM/ReRAM/CIM 新型存储器、Chiplet D2D 功耗、AI 加速器低功耗技术全集、职业发展路径
 
 ### 7.1 先进工艺节点低功耗挑战
 
