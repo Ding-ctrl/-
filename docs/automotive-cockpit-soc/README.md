@@ -22,6 +22,11 @@
 | [第8章](Ch08-软硬件划分与系统架构.md) | 软硬件划分与系统架构 | 硬件抽象层、虚拟化、AUTOSAR |
 | [第9章](Ch09-软件栈与操作系统.md) | 软件栈与操作系统 | Android Auto、Linux、QNX、Hypervisor |
 | [第10章](Ch10-未来发展趋势.md) | 未来发展趋势 | 中央计算、FOTA、AI大模型、Chiplet |
+| [第11章](Ch11-芯片测试与车规认证.md) | 芯片测试与车规认证 | AEC-Q100、DFT/BIST、ATE测试、FMEDA |
+| [第12章](Ch12-板级参考设计.md) | 板级参考设计（PCB/硬件设计指南） | SI/PI/EMC、层叠设计、热设计、PPAP |
+| [第13章](Ch13-诊断与远程运维.md) | 诊断与远程运维 | UDS/DoIP、DTC、SOVD、远程诊断、EDR |
+| [第14章](Ch14-HMI人机交互设计.md) | HMI 人机交互设计 | 语音/触控/手势、WCAG、驾驶安全限制、AR-HUD |
+| [第15章](Ch15-性能调优与工程实践.md) | 性能调优与工程实践 | 基准测试、GPU/NPU剖析、Android优化、CI/CD |
 
 ---
 
