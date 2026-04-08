@@ -11,23 +11,29 @@ Unified Power Format (UPF) 是 IEEE 1801 标准定义的低功耗设计意图描
 ### 9.2.1 UPF 版本演进
 
 ```
-UPF版本历史:
+UPF版本历史 (IEEE 1801 标准族):
 
-UPF 1.0 (2007)  ── IEEE 1801-2009
-  │  基础电源域、隔离、保持、电平转换
+UPF 1.0/1.1     ── IEEE 1801-2009
+  │  基础电源域、隔离(set_isolation)、保持(set_retention)、电平转换
+  │  电源状态表：create_pst + add_pst_state（已在 2.0 废弃）
   │
-UPF 2.0 (2009)  ── IEEE 1801-2013
-  │  增强：供电网络建模、电源状态覆盖
+UPF 2.0         ── IEEE 1801-2013  ★ 本章重点
+  │  新增：create_supply_set（供电集合）
+  │  新增：add_power_state 替代旧式 create_pst/add_pst_state
+  │  新增：-supply_expr / -simstate 语义
+  │  新增：create_composite_domain、-diff_supply_only
+  │  新增：set_design_top、set_scope（显式作用域）
+  │  新增：load_upf -scope（正式层次化）
   │
-UPF 2.1 (2013)  ── IEEE 1801-2015
-  │  增强：供电集合(Supply Set)、简化策略
+UPF 3.0         ── IEEE 1801-2015
+  │  增强：多级UPF精化语义（successive refinement）
+  │  增强：Liberty扩展、仿真语义强化
   │
-UPF 3.0 (2015)  ── IEEE 1801-2018
-  │  增强：多级UPF、Liberty扩展、仿真语义
-  │
-UPF 3.1 (2018)  ── IEEE 1801-2024 (Draft)
-     增强：电源状态机增强、工具互操作性
+UPF 3.1         ── IEEE 1801-2018
+     增强：电源状态机增强、工具互操作性提升
 ```
+
+> **本章所有代码示例均遵循 UPF 2.0（IEEE 1801-2013）语法。**
 
 ### 9.2.2 核心命令分类
 
@@ -36,16 +42,19 @@ UPF 3.1 (2018)  ── IEEE 1801-2024 (Draft)
 | **电源域** | `create_power_domain` | 创建电源域，指定包含的设计元素 |
 | **供电网络** | `create_supply_net` | 创建供电网络 |
 | | `create_supply_port` | 创建供电端口 |
-| | `create_supply_set` | 创建供电集合（UPF 2.1+） |
+| | `create_supply_set` | 创建供电集合（**UPF 2.0+**，核心新特性） |
 | | `connect_supply_net` | 连接供电网络 |
 | **电源开关** | `create_power_switch` | 定义电源开关控制 |
 | **隔离** | `set_isolation` | 设置隔离策略 |
 | | `set_isolation_control` | 指定隔离控制信号 |
-| **保持** | `set_retention` | 设置状态保持策略 |
-| | `set_retention_control` | 指定保持控制信号 |
+| **保持** | `set_retention` | 设置状态保持策略（UPF 2.0 合并了 save/restore 信号） |
 | **电平转换** | `set_level_shifter` | 设置电平转换策略 |
-| **电源状态** | `create_pst` | 创建电源状态表(已废弃) |
-| | `add_power_state` | 添加电源状态（UPF 2.0+） |
+| **电源状态** | `create_pst` / `add_pst_state` | **UPF 1.0 旧式，已废弃** |
+| | `add_power_state` | 添加电源状态（**UPF 2.0+**，替代 create_pst） |
+| **作用域** | `set_design_top` | 声明顶层设计（**UPF 2.0+**，强制要求） |
+| | `set_scope` | 切换命令作用范围（**UPF 2.0+**） |
+| **层次化** | `load_upf -scope` | 加载子模块 UPF（**UPF 2.0+** 正式标准化） |
+| **复合域** | `create_composite_domain` | 多子域联动关断（**UPF 2.0+**） |
 | **映射** | `map_isolation_cell` | 映射隔离单元到库单元 |
 | | `map_retention_cell` | 映射保持单元到库单元 |
 | | `map_level_shifter_cell` | 映射电平转换单元 |
@@ -59,30 +68,36 @@ UPF 3.1 (2018)  ── IEEE 1801-2024 (Draft)
 ```tcl
 ###############################################
 # 文件: simple_design.upf
+# 规范: IEEE 1801-2013 (UPF 2.0)
 # 描述: 单电源域UPF示例
 ###############################################
 
-# 1. 设置UPF版本（推荐）
+# 1. 声明顶层设计（UPF 2.0 必须）
+set_design_top top
+
+# 2. 设置作用域（UPF 2.0 新增）
 set_scope /top
 
-# 2. 创建顶层电源域
-create_power_domain PD_TOP
-
-# 3. 创建供电网络
+# 3. 创建供电网络与端口
 create_supply_net VDD -domain PD_TOP
 create_supply_net VSS -domain PD_TOP
 
-# 4. 创建供电端口
 create_supply_port VDD -direction in
 create_supply_port VSS -direction in
 
-# 5. 连接供电端口到供电网络
 connect_supply_net VDD -ports {VDD}
 connect_supply_net VSS -ports {VSS}
 
-# 6. 设置主供电（primary supply）
-set_domain_supply_strategy PD_TOP \
-    -supply {primary -power VDD -ground VSS}
+# 4. 创建 Supply Set（UPF 2.0 核心特性）
+#    -function 的函数名：primary（主电源）、ground（地）
+create_supply_set SS_TOP \
+    -function {primary VDD} \
+    -function {ground  VSS}
+
+# 5. 创建顶层电源域，并通过 -supply 绑定 Supply Set
+#    （UPF 2.0 语法：-supply {<函数名> <Supply Set名>}）
+create_power_domain PD_TOP \
+    -supply {primary SS_TOP}
 ```
 
 ### 9.3.2 理解供电集合 (Supply Set)
@@ -90,22 +105,26 @@ set_domain_supply_strategy PD_TOP \
 UPF 2.1 引入了 Supply Set 的概念，简化了多电压场景下的供电关联：
 
 ```tcl
-# UPF 2.1 风格：使用 Supply Set
+# UPF 2.0 风格：使用 Supply Set
+# 注意：函数名使用 primary（主电源）和 ground（地），而非 power/ground
 create_supply_set SS_TOP \
-    -function {power VDD} \
-    -function {ground VSS}
+    -function {primary VDD} \
+    -function {ground  VSS}
 
-# 创建电源域并关联 Supply Set
+# 创建电源域并通过 -supply 直接绑定 Supply Set
+# UPF 2.0 语法：-supply {<函数名> <Supply Set名>}
 create_power_domain PD_TOP \
     -supply {primary SS_TOP}
 ```
 
-**Supply Set vs 传统方式对比：**
+**Supply Set vs 传统方式对比（UPF 2.0 视角）：**
 
-| 特性 | 传统方式 (UPF 1.0) | Supply Set (UPF 2.1+) |
-|------|---------------------|------------------------|
-| 供电关联 | 逐个 net 关联 | 集合关联 |
-| 多电压管理 | 复杂，多行命令 | 简洁，一个集合即可 |
+| 特性 | UPF 1.0 传统方式 | UPF 2.0 Supply Set |
+|------|------------------|--------------------|
+| 供电关联 | 逐个 net 通过 `-isolation_power_net` 等引用 | 集合关联，一次绑定 |
+| 隔离电源引用 | `-isolation_power_net VDD` | `-isolation_supply_set SS_AON` |
+| 保持电源引用 | `-retention_power_net VDD` | `-retention_supply_set SS_AON` |
+| 多电压管理 | 复杂，多行命令 | 简洁，Supply Set 封装所有函数 |
 | 可维护性 | 修改时易遗漏 | 集中管理 |
 | 工具支持 | 广泛 | 主流工具均支持 |
 
@@ -147,115 +166,135 @@ create_power_domain PD_TOP \
 ```tcl
 ###############################################
 # 文件: dual_domain.upf
+# 规范: IEEE 1801-2013 (UPF 2.0)
 # 描述: 双电源域UPF，含关断/隔离/保持
 ###############################################
 
 # ============================================
-# 1. 电源域定义
+# 0. 顶层声明（UPF 2.0 必须）
 # ============================================
-
-# 顶层 Always-On 域
-create_power_domain PD_AON -include_scope
-
-# 可关断域 - 指定包含的模块
-create_power_domain PD_CORE \
-    -elements {u_cpu u_dma u_periph}
+set_design_top dual_domain_top
+set_scope /dual_domain_top
 
 # ============================================
-# 2. 供电网络创建
+# 1. 供电网络与端口
 # ============================================
 
 # Always-On 供电
 create_supply_net VDD_AON -domain PD_AON
 create_supply_net VSS     -domain PD_AON
 
-# 可关断域供电（开关前后）
-create_supply_net VDD_CORE    -domain PD_CORE
-create_supply_net VDD_CORE_SW -domain PD_CORE
+# 可关断域供电（开关前 VDD_CORE，开关后 VDD_CORE_SW）
+create_supply_net VDD_CORE    -domain PD_AON   ; # 来自外部 PMIC，属于 AO 域电源轨
+create_supply_net VDD_CORE_SW -domain PD_CORE  ; # 开关输出，驱动 PD_CORE 内部逻辑
 
 # 供电端口
 create_supply_port VDD_AON  -direction in
 create_supply_port VDD_CORE -direction in
 create_supply_port VSS      -direction in
 
-# 连接
 connect_supply_net VDD_AON  -ports {VDD_AON}
 connect_supply_net VDD_CORE -ports {VDD_CORE}
 connect_supply_net VSS      -ports {VSS}
 
-# 设置主供电
+# ============================================
+# 2. Supply Set（UPF 2.0：封装所有供电函数）
+# ============================================
+
+# AO 域 Supply Set：含 isolation 函数（供关断域隔离单元使用）
 create_supply_set SS_AON \
-    -function {power VDD_AON} \
-    -function {ground VSS}
+    -function {primary   VDD_AON} \
+    -function {ground    VSS}
 
+# 可关断域 Supply Set：含 retention/isolation 函数
 create_supply_set SS_CORE \
-    -function {power VDD_CORE_SW} \
-    -function {ground VSS}
-
-associate_supply_set SS_AON  -handle PD_AON.primary
-associate_supply_set SS_CORE -handle PD_CORE.primary
+    -function {primary   VDD_CORE_SW} \
+    -function {ground    VSS}         \
+    -function {retention VDD_AON}     \  ; # 保持电源来自 AO 域
+    -function {isolation VDD_AON}        ; # 隔离单元电源来自 AO 域
 
 # ============================================
-# 3. 电源开关
+# 3. 电源域定义（UPF 2.0：-supply 绑定 Supply Set）
+# ============================================
+
+# 顶层 Always-On 域
+create_power_domain PD_AON \
+    -include_scope       \
+    -supply {primary SS_AON}
+
+# 可关断域
+create_power_domain PD_CORE \
+    -elements    {u_cpu u_dma u_periph} \
+    -supply      {primary   SS_CORE}   \
+    -supply      {retention SS_CORE}
+
+# ============================================
+# 4. 电源开关
 # ============================================
 
 create_power_switch SW_CORE \
-    -domain         PD_CORE \
-    -input_supply_port  {vin  VDD_CORE} \
-    -output_supply_port {vout VDD_CORE_SW} \
+    -domain             PD_CORE              \
+    -input_supply_port  {vin  VDD_CORE}      \
+    -output_supply_port {vout VDD_CORE_SW}   \
     -control_port       {ctrl pmu/core_pwr_en} \
-    -on_state           {on_state vin {ctrl}} \
-    -off_state          {off_state {!ctrl}}
+    -on_state           {on_st  vin {ctrl}}  \
+    -off_state          {off_st     {!ctrl}}
 
 # ============================================
-# 4. 隔离策略
+# 5. 隔离策略（UPF 2.0：-isolation_supply_set）
 # ============================================
 
-# 从可关断域输出到AON域的信号需要隔离
 set_isolation iso_core_to_aon \
-    -domain PD_CORE \
-    -isolation_power_net VDD_AON \
-    -isolation_ground_net VSS \
-    -applies_to outputs \
-    -clamp_value 0
+    -domain                PD_CORE           \
+    -applies_to            outputs           \
+    -clamp_value           0                 \
+    -diff_supply_only      true              \  ; # UPF 2.0：仅在电压不同时插入
+    -isolation_supply_set  SS_CORE           \  ; # 工具从 SS_CORE.isolation 取电源
+    -location              parent
 
 set_isolation_control iso_core_to_aon \
-    -domain PD_CORE \
-    -isolation_signal pmu/iso_core_en \
-    -isolation_sense high \
-    -location parent
+    -domain           PD_CORE              \
+    -isolation_signal pmu/iso_core_en      \
+    -isolation_sense  high                 \
+    -location         parent
 
 # ============================================
-# 5. 状态保持策略
+# 6. 状态保持策略（UPF 2.0：-retention_supply_set，save/restore 合并）
 # ============================================
 
 set_retention ret_core \
-    -domain PD_CORE \
-    -retention_power_net VDD_AON \
-    -retention_ground_net VSS
-
-set_retention_control ret_core \
-    -domain PD_CORE \
-    -save_signal    {pmu/ret_save    high} \
-    -restore_signal {pmu/ret_restore high}
+    -domain                PD_CORE           \
+    -retention_supply_set  SS_CORE           \  ; # 工具从 SS_CORE.retention 取电源
+    -save_signal    {pmu/ret_save    posedge} \
+    -restore_signal {pmu/ret_restore posedge}
 
 # ============================================
-# 6. 电源状态定义
+# 7. 电源状态（UPF 2.0：add_power_state，-supply_expr/-simstate）
 # ============================================
 
-add_power_state PD_AON.primary \
-    -state {AON_ON  -supply_expr {power == `{FULL_ON, 0.9}}}
+# Supply Set 级别：声明各函数允许的电压状态
+add_power_state SS_AON.primary \
+    -state {AON_ON  -supply_expr {power == 0.9}}
 
-add_power_state PD_CORE.primary \
-    -state {CORE_ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
-    -state {CORE_OFF -supply_expr {power == `{OFF}}}
+add_power_state SS_CORE.primary \
+    -state {CORE_ON  -supply_expr {power == 0.9}} \
+    -state {CORE_OFF -supply_expr {power == off}}
 
-# 系统级电源状态
+add_power_state SS_CORE.retention \
+    -state {RET_ON  -supply_expr {power == 0.9}} \
+    -state {RET_OFF -supply_expr {power == off}}
+
+# 域级别：声明组合状态与仿真语义
+add_power_state PD_CORE \
+    -state {ACTIVE    -supply_expr {primary == CORE_ON  && retention == RET_ON}  -simstate NORMAL}             \
+    -state {RETENTION -supply_expr {primary == CORE_OFF && retention == RET_ON}  -simstate CORRUPT_ON_RESTORE} \
+    -state {SHUTDOWN  -supply_expr {primary == CORE_OFF && retention == RET_OFF} -simstate CORRUPT}
+
+# 系统级电源状态（基于子域逻辑表达式）
 add_power_state PD_AON \
-    -state {SYS_ACTIVE  -logic_expr {PD_AON.primary == AON_ON && \
-                                      PD_CORE.primary == CORE_ON}} \
-    -state {SYS_STANDBY -logic_expr {PD_AON.primary == AON_ON && \
-                                      PD_CORE.primary == CORE_OFF}}
+    -state {SYS_ACTIVE  -logic_expr {PD_CORE == ACTIVE}}    \
+    -state {SYS_STANDBY -logic_expr {PD_CORE == RETENTION}} \
+    -state {SYS_SHUTDOWN -logic_expr {PD_CORE == SHUTDOWN}}
 ```
 
 ### 9.4.3 常见错误与调试
@@ -288,15 +327,24 @@ set_isolation iso_core_inout -domain PD_CORE -applies_to inouts
 # 8. de-assert isolation_enable
 ```
 
-**错误3：缺少供电网络连接**
+**错误3：缺少供电网络连接（UPF 1.0→2.0 改写示例）**
 ```tcl
-# 错误：隔离单元使用了已关断域的供电
+# UPF 1.0 写法（错误）：隔离单元使用了已关断域的供电
 set_isolation iso_core -domain PD_CORE \
-    -isolation_power_net VDD_CORE_SW  # 错! 关断后此供电无效
+    -isolation_power_net VDD_CORE_SW   # 错！关断后此供电无效
 
-# 正确：隔离单元必须使用 Always-On 供电
+# UPF 1.0 写法（较好但仍是废弃语法）：AO 供电正确，但仍用旧参数
 set_isolation iso_core -domain PD_CORE \
-    -isolation_power_net VDD_AON      # 正确，AON域始终有供电
+    -isolation_power_net VDD_AON       # 正确的供电，但非 UPF 2.0 推荐
+
+# UPF 2.0 正确写法：通过 Supply Set 的 isolation 函数引用 AO 供电
+# （前提：SS_CORE 已在 create_supply_set 中声明 -function {isolation VDD_AON}）
+set_isolation iso_core \
+    -domain               PD_CORE  \
+    -isolation_supply_set SS_CORE  \  # UPF 2.0：从 SS_CORE.isolation 自动取 AO 电源
+    -applies_to           outputs  \
+    -clamp_value          0        \
+    -location             parent
 ```
 
 ## 9.5 多电源域 SoC UPF 实战
@@ -343,11 +391,14 @@ set_isolation iso_core -domain PD_CORE \
 ```tcl
 ###############################################
 # 文件: mobile_soc.upf
+# 规范: IEEE 1801-2013 (UPF 2.0)
 # 描述: 多电源域移动SoC UPF
-# 版本: UPF 2.1
 ###############################################
 
-set upf_version 2.1
+# UPF 2.0 顶层声明（必须）
+upf_version 2.0
+set_design_top mobile_soc_top
+set_scope /mobile_soc_top
 
 # ============================================
 # 1. 电源域层次定义
@@ -383,17 +434,17 @@ create_power_domain PD_MEM \
 create_supply_net VDD_AON   -domain PD_TOP
 create_supply_net VSS       -domain PD_TOP
 
-# CPU/GPU DVFS 供电（电压可调）
-create_supply_net VDD_CPU      -domain PD_CPU
+# CPU/GPU DVFS 供电（电压可调，来自外部 PMIC）
+create_supply_net VDD_CPU      -domain PD_TOP
 create_supply_net VDD_CPU_SW   -domain PD_CPU
-create_supply_net VDD_GPU      -domain PD_GPU
+create_supply_net VDD_GPU      -domain PD_TOP
 create_supply_net VDD_GPU_SW   -domain PD_GPU
 
 # 固定电压域供电
-create_supply_net VDD_MODEM    -domain PD_MODEM
+create_supply_net VDD_MODEM    -domain PD_TOP
 create_supply_net VDD_MODEM_SW -domain PD_MODEM
-create_supply_net VDD_PERIPH   -domain PD_PERIPH
-create_supply_net VDD_MEM      -domain PD_MEM
+create_supply_net VDD_PERIPH   -domain PD_TOP
+create_supply_net VDD_MEM      -domain PD_TOP
 
 # 端口和连接
 create_supply_port VDD_AON    -direction in
@@ -413,32 +464,68 @@ connect_supply_net VDD_MEM    -ports {VDD_MEM}
 connect_supply_net VSS        -ports {VSS}
 
 # ============================================
-# 3. Supply Sets
+# 3. Supply Sets（UPF 2.0：函数名 primary/ground/retention/isolation）
 # ============================================
 
 create_supply_set SS_AON \
-    -function {power VDD_AON} -function {ground VSS}
+    -function {primary   VDD_AON} \
+    -function {ground    VSS}
+
+# CPU/GPU Supply Set：内置 retention 和 isolation 函数（均指向 AO 供电）
 create_supply_set SS_CPU \
-    -function {power VDD_CPU_SW} -function {ground VSS}
+    -function {primary   VDD_CPU_SW} \
+    -function {ground    VSS}        \
+    -function {retention VDD_AON}    \
+    -function {isolation VDD_AON}
+
 create_supply_set SS_GPU \
-    -function {power VDD_GPU_SW} -function {ground VSS}
+    -function {primary   VDD_GPU_SW} \
+    -function {ground    VSS}        \
+    -function {retention VDD_AON}    \
+    -function {isolation VDD_AON}
+
 create_supply_set SS_MODEM \
-    -function {power VDD_MODEM_SW} -function {ground VSS}
+    -function {primary   VDD_MODEM_SW} \
+    -function {ground    VSS}          \
+    -function {isolation VDD_AON}
+
 create_supply_set SS_PERIPH \
-    -function {power VDD_PERIPH} -function {ground VSS}
+    -function {primary   VDD_PERIPH} \
+    -function {ground    VSS}
+
 create_supply_set SS_MEM \
-    -function {power VDD_MEM} -function {ground VSS}
-
-associate_supply_set SS_AON    -handle PD_TOP.primary
-associate_supply_set SS_CPU    -handle PD_CPU.primary
-associate_supply_set SS_GPU    -handle PD_GPU.primary
-associate_supply_set SS_MODEM  -handle PD_MODEM.primary
-associate_supply_set SS_PERIPH -handle PD_PERIPH.primary
-associate_supply_set SS_MEM    -handle PD_MEM.primary
+    -function {primary   VDD_MEM} \
+    -function {ground    VSS}
 
 # ============================================
-# 4. 电源开关
+# 4. 电源域定义（UPF 2.0：-supply 绑定 Supply Set）
 # ============================================
+
+create_power_domain PD_TOP \
+    -include_scope       \
+    -supply {primary SS_AON}
+
+create_power_domain PD_CPU \
+    -elements    {u_cpu_subsys}        \
+    -supply      {primary   SS_CPU}    \
+    -supply      {retention SS_CPU}
+
+create_power_domain PD_GPU \
+    -elements    {u_gpu_subsys}        \
+    -supply      {primary   SS_GPU}    \
+    -supply      {retention SS_GPU}
+
+create_power_domain PD_MODEM \
+    -elements    {u_modem}             \
+    -supply      {primary   SS_MODEM}
+
+create_power_domain PD_PERIPH \
+    -elements    {u_uart u_spi u_i2c u_usb} \
+    -supply      {primary   SS_PERIPH}
+
+create_power_domain PD_MEM \
+    -elements    {u_ddr_ctrl u_ddr_phy} \
+    -supply      {primary   SS_MEM}
 
 create_power_switch SW_CPU \
     -domain PD_CPU \
@@ -446,7 +533,7 @@ create_power_switch SW_CPU \
     -output_supply_port {vout VDD_CPU_SW} \
     -control_port       {ctrl u_pmu/cpu_pwr_en} \
     -on_state           {on  vin {ctrl}} \
-    -off_state          {off {!ctrl}}
+    -off_state          {off     {!ctrl}}
 
 create_power_switch SW_GPU \
     -domain PD_GPU \
@@ -454,7 +541,7 @@ create_power_switch SW_GPU \
     -output_supply_port {vout VDD_GPU_SW} \
     -control_port       {ctrl u_pmu/gpu_pwr_en} \
     -on_state           {on  vin {ctrl}} \
-    -off_state          {off {!ctrl}}
+    -off_state          {off     {!ctrl}}
 
 create_power_switch SW_MODEM \
     -domain PD_MODEM \
@@ -462,85 +549,80 @@ create_power_switch SW_MODEM \
     -output_supply_port {vout VDD_MODEM_SW} \
     -control_port       {ctrl u_pmu/modem_pwr_en} \
     -on_state           {on  vin {ctrl}} \
-    -off_state          {off {!ctrl}}
+    -off_state          {off     {!ctrl}}
 
 # ============================================
-# 5. 隔离策略 - 每个可关断域
+# 5. 隔离策略（UPF 2.0：-isolation_supply_set 替代旧式 -isolation_power_net）
 # ============================================
 
 # CPU 域隔离
 set_isolation iso_cpu \
-    -domain PD_CPU \
-    -isolation_power_net VDD_AON \
-    -isolation_ground_net VSS \
-    -applies_to outputs \
-    -clamp_value 0
+    -domain               PD_CPU          \
+    -applies_to           outputs         \
+    -clamp_value          0               \
+    -diff_supply_only     true            \
+    -isolation_supply_set SS_CPU          \
+    -location             parent
 
 set_isolation_control iso_cpu \
-    -domain PD_CPU \
-    -isolation_signal u_pmu/iso_cpu_en \
-    -isolation_sense high \
-    -location parent
+    -domain           PD_CPU             \
+    -isolation_signal u_pmu/iso_cpu_en   \
+    -isolation_sense  high               \
+    -location         parent
 
 # GPU 域隔离
 set_isolation iso_gpu \
-    -domain PD_GPU \
-    -isolation_power_net VDD_AON \
-    -isolation_ground_net VSS \
-    -applies_to outputs \
-    -clamp_value 0
+    -domain               PD_GPU          \
+    -applies_to           outputs         \
+    -clamp_value          0               \
+    -diff_supply_only     true            \
+    -isolation_supply_set SS_GPU          \
+    -location             parent
 
 set_isolation_control iso_gpu \
-    -domain PD_GPU \
-    -isolation_signal u_pmu/iso_gpu_en \
-    -isolation_sense high \
-    -location parent
+    -domain           PD_GPU             \
+    -isolation_signal u_pmu/iso_gpu_en   \
+    -isolation_sense  high               \
+    -location         parent
 
 # Modem 域隔离
 set_isolation iso_modem \
-    -domain PD_MODEM \
-    -isolation_power_net VDD_AON \
-    -isolation_ground_net VSS \
-    -applies_to outputs \
-    -clamp_value 0
+    -domain               PD_MODEM        \
+    -applies_to           outputs         \
+    -clamp_value          0               \
+    -diff_supply_only     true            \
+    -isolation_supply_set SS_MODEM        \
+    -location             parent
 
 set_isolation_control iso_modem \
-    -domain PD_MODEM \
+    -domain           PD_MODEM           \
     -isolation_signal u_pmu/iso_modem_en \
-    -isolation_sense high \
-    -location parent
+    -isolation_sense  high               \
+    -location         parent
 
 # ============================================
-# 6. 状态保持策略
+# 6. 状态保持策略（UPF 2.0：-retention_supply_set，save/restore 合并到 set_retention）
 # ============================================
 
 # CPU 域保持（关键寄存器）
 set_retention ret_cpu \
-    -domain PD_CPU \
-    -retention_power_net VDD_AON \
-    -retention_ground_net VSS \
-    -elements {u_cpu_subsys/u_cpu_core/u_arch_regs \
-               u_cpu_subsys/u_cpu_core/u_pc_reg \
-               u_cpu_subsys/u_cpu_core/u_sp_reg}
-
-set_retention_control ret_cpu \
-    -domain PD_CPU \
-    -save_signal    {u_pmu/ret_cpu_save    posedge} \
-    -restore_signal {u_pmu/ret_cpu_restore posedge}
+    -domain                PD_CPU                    \
+    -retention_supply_set  SS_CPU                    \
+    -save_signal    {u_pmu/ret_cpu_save    posedge}  \
+    -restore_signal {u_pmu/ret_cpu_restore posedge}  \
+    -elements       {u_cpu_subsys/u_cpu_core/u_arch_regs \
+                     u_cpu_subsys/u_cpu_core/u_pc_reg    \
+                     u_cpu_subsys/u_cpu_core/u_sp_reg}
 
 # GPU 域保持（上下文状态）
 set_retention ret_gpu \
-    -domain PD_GPU \
-    -retention_power_net VDD_AON \
-    -retention_ground_net VSS
-
-set_retention_control ret_gpu \
-    -domain PD_GPU \
-    -save_signal    {u_pmu/ret_gpu_save    posedge} \
+    -domain                PD_GPU                    \
+    -retention_supply_set  SS_GPU                    \
+    -save_signal    {u_pmu/ret_gpu_save    posedge}  \
     -restore_signal {u_pmu/ret_gpu_restore posedge}
 
 # ============================================
-# 7. 电平转换
+# 7. 电平转换（UPF 2.0 语法不变）
 # ============================================
 
 # CPU域(多电压)到AON域的电平转换
@@ -565,55 +647,59 @@ set_level_shifter ls_aon_to_cpu \
     -location self
 
 # ============================================
-# 8. 电源状态
+# 8. 电源状态（UPF 2.0：基于 Supply Set 函数表达式，不用反引号语法）
 # ============================================
 
-# 各域电源状态
-add_power_state PD_TOP.primary \
-    -state {AON_ON -supply_expr {power == `{FULL_ON, 0.9}}}
+# Supply Set 级别：声明各函数允许的电压值
+add_power_state SS_AON.primary \
+    -state {AON_ON  -supply_expr {power == 0.9}}
 
-add_power_state PD_CPU.primary \
-    -state {CPU_FULL   -supply_expr {power == `{FULL_ON, 1.1}}} \
-    -state {CPU_NOM    -supply_expr {power == `{FULL_ON, 0.9}}} \
-    -state {CPU_LOW    -supply_expr {power == `{FULL_ON, 0.7}}} \
-    -state {CPU_RET    -supply_expr {power == `{FULL_ON, 0.6}}} \
-    -state {CPU_OFF    -supply_expr {power == `{OFF}}}
+add_power_state SS_CPU.primary \
+    -state {CPU_FULL -supply_expr {power == 1.1}} \
+    -state {CPU_NOM  -supply_expr {power == 0.9}} \
+    -state {CPU_LOW  -supply_expr {power == 0.7}} \
+    -state {CPU_RET  -supply_expr {power == 0.6}} \
+    -state {CPU_OFF  -supply_expr {power == off}}
 
-add_power_state PD_GPU.primary \
-    -state {GPU_FULL   -supply_expr {power == `{FULL_ON, 1.0}}} \
-    -state {GPU_NOM    -supply_expr {power == `{FULL_ON, 0.8}}} \
-    -state {GPU_LOW    -supply_expr {power == `{FULL_ON, 0.65}}} \
-    -state {GPU_OFF    -supply_expr {power == `{OFF}}}
+add_power_state SS_GPU.primary \
+    -state {GPU_FULL -supply_expr {power == 1.0}}  \
+    -state {GPU_NOM  -supply_expr {power == 0.8}}  \
+    -state {GPU_LOW  -supply_expr {power == 0.65}} \
+    -state {GPU_OFF  -supply_expr {power == off}}
 
-add_power_state PD_MODEM.primary \
-    -state {MODEM_ON   -supply_expr {power == `{FULL_ON, 0.9}}} \
-    -state {MODEM_OFF  -supply_expr {power == `{OFF}}}
+add_power_state SS_MODEM.primary \
+    -state {MODEM_ON  -supply_expr {power == 0.9}} \
+    -state {MODEM_OFF -supply_expr {power == off}}
 
-# 系统级电源状态
+# 域级别：组合状态与仿真语义（UPF 2.0 新增 -simstate）
+add_power_state PD_CPU \
+    -state {CPU_ACTIVE -supply_expr {primary == CPU_NOM  || primary == CPU_FULL} -simstate NORMAL}            \
+    -state {CPU_DVFS   -supply_expr {primary == CPU_LOW}                          -simstate NORMAL}            \
+    -state {CPU_RET    -supply_expr {primary == CPU_RET}                          -simstate CORRUPT_ON_RESTORE} \
+    -state {CPU_OFF    -supply_expr {primary == CPU_OFF}                          -simstate CORRUPT}
+
+add_power_state PD_GPU \
+    -state {GPU_ACTIVE -supply_expr {primary == GPU_NOM || primary == GPU_FULL} -simstate NORMAL}  \
+    -state {GPU_DVFS   -supply_expr {primary == GPU_LOW}                         -simstate NORMAL}  \
+    -state {GPU_OFF    -supply_expr {primary == GPU_OFF}                         -simstate CORRUPT}
+
+add_power_state PD_MODEM \
+    -state {MODEM_ACTIVE -supply_expr {primary == MODEM_ON}  -simstate NORMAL}  \
+    -state {MODEM_OFF    -supply_expr {primary == MODEM_OFF} -simstate CORRUPT}
+
+# 系统级电源状态（基于子域逻辑表达式）
 add_power_state PD_TOP \
-    -state {SYS_ACTIVE \
-        -logic_expr {PD_CPU.primary == CPU_NOM && \
-                     PD_GPU.primary == GPU_NOM && \
-                     PD_MODEM.primary == MODEM_ON}} \
-    -state {SYS_IDLE \
-        -logic_expr {PD_CPU.primary == CPU_LOW && \
-                     PD_GPU.primary == GPU_OFF && \
-                     PD_MODEM.primary == MODEM_ON}} \
-    -state {SYS_STANDBY \
-        -logic_expr {PD_CPU.primary == CPU_RET && \
-                     PD_GPU.primary == GPU_OFF && \
-                     PD_MODEM.primary == MODEM_OFF}} \
-    -state {SYS_SHUTDOWN \
-        -logic_expr {PD_CPU.primary == CPU_OFF && \
-                     PD_GPU.primary == GPU_OFF && \
-                     PD_MODEM.primary == MODEM_OFF}}
+    -state {SYS_ACTIVE  -logic_expr {PD_CPU == CPU_ACTIVE && PD_GPU == GPU_ACTIVE && PD_MODEM == MODEM_ACTIVE}} \
+    -state {SYS_IDLE    -logic_expr {PD_CPU == CPU_DVFS   && PD_GPU == GPU_OFF    && PD_MODEM == MODEM_ACTIVE}} \
+    -state {SYS_STANDBY -logic_expr {PD_CPU == CPU_RET    && PD_GPU == GPU_OFF    && PD_MODEM == MODEM_OFF}}    \
+    -state {SYS_SHUTDOWN -logic_expr {PD_CPU == CPU_OFF   && PD_GPU == GPU_OFF    && PD_MODEM == MODEM_OFF}}
 ```
 
 ## 9.6 多级 UPF (Successive Refinement)
 
 ### 9.6.1 概念
 
-多级 UPF 是 UPF 3.0 引入的关键特性，允许在设计的不同层次和不同阶段逐步细化电源意图：
+多级 UPF 是 **UPF 2.0（IEEE 1801-2013）引入并正式标准化**的特性，允许在设计的不同层次和不同阶段逐步细化电源意图（UPF 3.0 进一步增强了精化语义）：
 
 ```
 多级UPF应用:
@@ -657,32 +743,51 @@ create_supply_net VSS     -domain PD_TOP -resolve parallel
 ```tcl
 ###############################################
 # 文件: cpu_subsys.upf
+# 规范: IEEE 1801-2013 (UPF 2.0)
 # 描述: CPU子系统模块级UPF
 ###############################################
 
 # 模块自身的电源域
 create_power_domain PD_CPU_LOCAL -include_scope
 
-# 模块看到的供电（由上层传入）
-create_supply_port VDD_CPU -direction in
-create_supply_port VSS     -direction in
+# 模块看到的供电端口（由上层传入）
+create_supply_port VDD_CPU     -direction in
+create_supply_port VDD_CPU_RET -direction in  ; # AO 保持电源，由父层传入
+create_supply_port VSS         -direction in
 
-create_supply_net VDD_CPU_INT -domain PD_CPU_LOCAL
-create_supply_net VSS_INT     -domain PD_CPU_LOCAL
+create_supply_net VDD_CPU_INT     -domain PD_CPU_LOCAL
+create_supply_net VDD_CPU_RET_INT -domain PD_CPU_LOCAL
+create_supply_net VSS_INT         -domain PD_CPU_LOCAL
 
-connect_supply_net VDD_CPU_INT -ports VDD_CPU
-connect_supply_net VSS_INT     -ports VSS
+connect_supply_net VDD_CPU_INT     -ports VDD_CPU
+connect_supply_net VDD_CPU_RET_INT -ports VDD_CPU_RET
+connect_supply_net VSS_INT         -ports VSS
 
-# 模块内的电源策略
+# 模块内 Supply Set（包含 retention/isolation 函数）
+create_supply_set SS_CPU_LOCAL \
+    -function {primary   VDD_CPU_INT}     \
+    -function {ground    VSS_INT}         \
+    -function {retention VDD_CPU_RET_INT} \
+    -function {isolation VDD_CPU_RET_INT}
+
+create_power_domain PD_CPU_LOCAL \
+    -supply {primary   SS_CPU_LOCAL} \
+    -supply {retention SS_CPU_LOCAL}
+
+# 模块内的隔离策略
 set_isolation iso_cpu_internal \
-    -domain PD_CPU_LOCAL \
-    -applies_to outputs \
-    -clamp_value 0
+    -domain               PD_CPU_LOCAL \
+    -applies_to           outputs      \
+    -clamp_value          0            \
+    -isolation_supply_set SS_CPU_LOCAL \
+    -location             parent
 
 # 模块内的保持策略
 set_retention ret_cpu_internal \
-    -domain PD_CPU_LOCAL \
-    -retention_power_net VDD_CPU_INT
+    -domain               PD_CPU_LOCAL \
+    -retention_supply_set SS_CPU_LOCAL \
+    -save_signal    {save_in    posedge} \
+    -restore_signal {restore_in posedge}
 ```
 
 ## 9.7 Liberty 库扩展与 UPF 映射
@@ -877,42 +982,74 @@ set CPU_VOLTAGE_NOM 0.9
 set CPU_VOLTAGE_LOW 0.7
 set AON_VOLTAGE     0.9
 
-add_power_state PD_CPU.primary \
-    -state {CPU_NOM -supply_expr {power == `{FULL_ON, $CPU_VOLTAGE_NOM}}} \
-    -state {CPU_LOW -supply_expr {power == `{FULL_ON, $CPU_VOLTAGE_LOW}}}
+# UPF 2.0：add_power_state 直接写数值，无需反引号语法
+add_power_state SS_CPU.primary \
+    -state {CPU_NOM -supply_expr {power == $CPU_VOLTAGE_NOM}} \
+    -state {CPU_LOW -supply_expr {power == $CPU_VOLTAGE_LOW}}
 
-# 2. 使用过程封装重复模式
-proc create_switchable_domain {name elements pwr_en iso_en} {
-    create_power_domain $name -elements $elements
-    
-    create_supply_net VDD_${name}    -domain $name
-    create_supply_net VDD_${name}_SW -domain $name
-    
+# 2. 使用过程封装重复模式（UPF 2.0 语法）
+proc create_switchable_domain_upf20 {name elements pwr_en iso_en save_en restore_en} {
+    # 供电网络
+    create_supply_net VDD_${name}    -domain PD_TOP  ; # 外部输入，属 AO 域
+    create_supply_net VDD_${name}_SW -domain $name   ; # 开关输出
+
+    # Supply Set（含 isolation 和 retention 函数，均指向 AO 供电）
+    create_supply_set SS_${name} \
+        -function {primary   VDD_${name}_SW} \
+        -function {ground    VSS}            \
+        -function {retention VDD_AON}        \
+        -function {isolation VDD_AON}
+
+    # 电源域绑定 Supply Set
+    create_power_domain $name \
+        -elements  $elements            \
+        -supply    {primary   SS_${name}} \
+        -supply    {retention SS_${name}}
+
+    # 电源开关
     create_power_switch SW_${name} \
-        -domain $name \
-        -input_supply_port  {vin  VDD_${name}} \
-        -output_supply_port {vout VDD_${name}_SW} \
-        -control_port       "ctrl $pwr_en" \
-        -on_state           {on vin {ctrl}} \
-        -off_state          {off {!ctrl}}
-    
+        -domain             $name              \
+        -input_supply_port  "vin  VDD_${name}" \
+        -output_supply_port "vout VDD_${name}_SW" \
+        -control_port       "ctrl $pwr_en"     \
+        -on_state           {on_st  vin {ctrl}} \
+        -off_state          {off_st     {!ctrl}}
+
+    # 隔离（UPF 2.0：-isolation_supply_set）
     set_isolation iso_${name} \
-        -domain $name \
-        -isolation_power_net VDD_AON \
-        -applies_to outputs \
-        -clamp_value 0
-    
+        -domain               $name         \
+        -applies_to           outputs       \
+        -clamp_value          0             \
+        -diff_supply_only     true          \
+        -isolation_supply_set SS_${name}    \
+        -location             parent
+
     set_isolation_control iso_${name} \
-        -domain $name \
-        -isolation_signal $iso_en \
-        -isolation_sense high \
-        -location parent
+        -domain           $name            \
+        -isolation_signal $iso_en          \
+        -isolation_sense  high             \
+        -location         parent
+
+    # 保持（UPF 2.0：-retention_supply_set，save/restore 合并）
+    set_retention ret_${name} \
+        -domain               $name          \
+        -retention_supply_set SS_${name}     \
+        -save_signal    "$save_en    posedge" \
+        -restore_signal "$restore_en posedge"
 }
 
-# 使用封装过程
-create_switchable_domain PD_CPU   {u_cpu}   u_pmu/cpu_pwr_en   u_pmu/iso_cpu_en
-create_switchable_domain PD_GPU   {u_gpu}   u_pmu/gpu_pwr_en   u_pmu/iso_gpu_en
-create_switchable_domain PD_MODEM {u_modem} u_pmu/modem_pwr_en u_pmu/iso_modem_en
+# 使用封装过程（传入 save/restore 信号）
+create_switchable_domain_upf20 PD_CPU   {u_cpu}   \
+    u_pmu/cpu_pwr_en   u_pmu/iso_cpu_en   \
+    u_pmu/ret_cpu_save u_pmu/ret_cpu_restore
+
+create_switchable_domain_upf20 PD_GPU   {u_gpu}   \
+    u_pmu/gpu_pwr_en   u_pmu/iso_gpu_en   \
+    u_pmu/ret_gpu_save u_pmu/ret_gpu_restore
+
+create_switchable_domain_upf20 PD_MODEM {u_modem} \
+    u_pmu/modem_pwr_en u_pmu/iso_modem_en \
+    u_pmu/ret_modem_save u_pmu/ret_modem_restore
 ```
 
 ## 9.10 实战练习
@@ -933,61 +1070,128 @@ create_switchable_domain PD_MODEM {u_modem} u_pmu/modem_pwr_en u_pmu/iso_modem_e
 
 ### 练习3：UPF 错误修复
 
-**题目：** 找出以下 UPF 中的所有错误并修正：
+**题目：** 找出以下 UPF 中的所有 UPF 2.0 规范问题并修正（共6处）：
 
 ```tcl
-# 有错误的UPF（共有5处错误）
+# 有问题的UPF（含 UPF 1.0 旧式写法和语法错误）
 create_power_domain PD_TOP -include_scope
 create_power_domain PD_CORE -elements {u_core}
 
 create_supply_net VDD -domain PD_TOP
 create_supply_net VSS -domain PD_TOP
 
-# 错误1: 电源开关输出用了原始供电名称
+# 问题1: 电源开关输出复用了输入网络名称（应是独立的 VDD_SW）
 create_power_switch SW_CORE \
     -domain PD_CORE \
     -input_supply_port  {vin VDD} \
     -output_supply_port {vout VDD} \
     -control_port {ctrl pwr_en} \
     -on_state {on vin {ctrl}}
+    # 问题2: 缺少 off_state 定义
 
-# 错误2: 隔离用了可关断域供电
+# 问题3: 隔离用了 UPF 1.0 废弃语法 -isolation_power_net，
+#         且误用了可关断域供电，且 applies_to 应为 outputs
 set_isolation iso_core \
     -domain PD_CORE \
     -isolation_power_net VDD \
     -applies_to inputs
 
-# 错误3: 保持没有指定保持供电
+# 问题4: 保持用了 UPF 1.0 废弃语法 -retention_power_net，
+#         且未指定地线，且没有 save/restore 信号
 set_retention ret_core \
-    -domain PD_CORE
+    -domain PD_CORE \
+    -retention_power_net VDD
 
-# 错误4: 保持控制信号来自被关断域
+# 问题5: set_retention_control 是 UPF 1.0 独立命令，
+#         UPF 2.0 已将 save/restore 合并进 set_retention
 set_retention_control ret_core \
     -domain PD_CORE \
     -save_signal {u_core/save_sig posedge}
-
-# 错误5: 缺少 off_state 定义
+    # 问题6: 缺少 restore_signal；且控制信号来自被关断域 u_core
 ```
 
-**参考答案要点：**
-1. 电源开关输出应该是独立的 VDD_SW 网络
-2. 隔离应该用 Always-On 供电且应用于 outputs
-3. 保持需要指定 retention_power_net 为 Always-On 供电
-4. 保持控制信号应来自 Always-On 域
-5. 电源开关需要定义 off_state
+**参考答案（UPF 2.0 合规版本）：**
+
+```tcl
+# 修正后的 UPF 2.0 版本
+upf_version 2.0
+set_design_top my_top
+set_scope /my_top
+
+# 供电网络
+create_supply_net VDD    -domain PD_TOP
+create_supply_net VDD_SW -domain PD_CORE   ; # 修正1：独立的开关后网络
+create_supply_net VSS    -domain PD_TOP
+
+# Supply Set
+create_supply_set SS_AON \
+    -function {primary   VDD}    \
+    -function {ground    VSS}
+
+create_supply_set SS_CORE \
+    -function {primary   VDD_SW} \
+    -function {ground    VSS}    \
+    -function {retention VDD}    \   ; # 保持电源来自 AO 域
+    -function {isolation VDD}        ; # 隔离电源来自 AO 域
+
+create_power_domain PD_TOP  -include_scope -supply {primary SS_AON}
+create_power_domain PD_CORE -elements {u_core} \
+    -supply {primary SS_CORE} -supply {retention SS_CORE}
+
+# 修正2：电源开关加入 off_state
+create_power_switch SW_CORE \
+    -domain             PD_CORE          \
+    -input_supply_port  {vin VDD}        \
+    -output_supply_port {vout VDD_SW}    \  ; # 修正1：独立输出网络
+    -control_port       {ctrl pmu/pwr_en} \
+    -on_state           {on_st  vin {ctrl}}  \
+    -off_state          {off_st     {!ctrl}}   ; # 修正2
+
+# 修正3：UPF 2.0 -isolation_supply_set + applies_to outputs
+set_isolation iso_core \
+    -domain               PD_CORE        \
+    -applies_to           outputs        \  ; # 修正3
+    -clamp_value          0              \
+    -isolation_supply_set SS_CORE        \  ; # 修正3：Supply Set 封装 AO 电源
+    -location             parent
+
+set_isolation_control iso_core \
+    -domain           PD_CORE           \
+    -isolation_signal pmu/iso_core_en   \  ; # 控制信号来自 AO 域 pmu
+    -isolation_sense  high              \
+    -location         parent
+
+# 修正4+5+6：UPF 2.0 -retention_supply_set，save/restore 合并，控制信号来自 AO 域
+set_retention ret_core \
+    -domain               PD_CORE              \
+    -retention_supply_set SS_CORE              \  ; # 修正4：Supply Set
+    -save_signal    {pmu/ret_save    posedge}  \  ; # 修正5+6：合并，来自 AO 域
+    -restore_signal {pmu/ret_restore posedge}
+```
+
+**6处问题总结：**
+1. 电源开关输出网络与输入同名 → 应使用独立的 `VDD_SW`
+2. 缺少 `off_state` → 必须同时定义 on/off 两种状态
+3. `-isolation_power_net` 是 UPF 1.0 废弃语法，且引用了可关断域电源，且方向错误 → 用 `-isolation_supply_set`，`applies_to outputs`
+4. `-retention_power_net` 是 UPF 1.0 废弃语法 → 用 `-retention_supply_set`
+5. `set_retention_control` 是 UPF 1.0 独立命令 → UPF 2.0 将 save/restore 合并入 `set_retention`
+6. 保持控制信号来自被关断域 `u_core` → 必须来自 Always-On 域的 PMU
 
 ## 9.11 本章小结
 
-本章从实战角度系统介绍了 UPF 编写方法：
+本章以 **UPF 2.0（IEEE 1801-2013）** 为规范基准，从实战角度系统介绍了 UPF 编写方法：
 
-| 知识点 | 关键掌握 |
-|--------|----------|
-| UPF 基础语法 | 电源域、供电网络、Supply Set 的创建和关联 |
-| 单/双域 UPF | 从最简单到含隔离/保持/开关的完整流程 |
-| 多域 SoC UPF | 实际移动 SoC 的完整多域 UPF 编写 |
-| 多级 UPF | Golden UPF + Block UPF 的分层策略 |
-| Liberty 映射 | 库单元属性与 UPF 策略的映射关系 |
-| 验证与调试 | UPF 检查项、调试命令和常见错误 |
-| 最佳实践 | 命名规范、文件组织、参数化编写 |
+| 知识点 | UPF 2.0 关键要点 |
+|--------|-----------------|
+| 顶层声明 | `upf_version 2.0` + `set_design_top` + `set_scope` 是必须项 |
+| Supply Set | `create_supply_set` 封装 `primary/ground/retention/isolation` 四类函数 |
+| 域绑定 | `create_power_domain -supply {primary SS_xxx}` 直接绑定，取代 `associate_supply_set` |
+| 电源状态 | `add_power_state SS_xxx.primary -state {... -supply_expr {power == 0.9}}` 替代 `create_pst` |
+| 仿真语义 | `-simstate NORMAL/CORRUPT/CORRUPT_ON_RESTORE` 驱动 PA-Sim 行为 |
+| 隔离策略 | `set_isolation ... -isolation_supply_set SS_xxx`，取代 `-isolation_power_net` |
+| 保持策略 | `set_retention ... -retention_supply_set SS_xxx -save_signal ... -restore_signal ...`（合并，取代独立 `set_retention_control`） |
+| 多级 UPF | `load_upf -scope` 层次化，Golden UPF + Block UPF 分层 |
+| Liberty 映射 | `map_isolation_cell` / `map_retention_cell` / `map_level_shifter_cell` |
+| 验证调试 | `check_mv_design`、`report_power_domain`、`report_isolation` 等工具命令 |
 
 **下一章**将介绍如何在 Synopsys/Cadence EDA 工具中使用这些 UPF 文件完成综合、物理实现和功耗签核的完整流程。
