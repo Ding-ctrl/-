@@ -340,8 +340,8 @@ create_power_switch SW_CPU \
     -domain PD_CPU \
     -input_supply_port {vin VDD} \
     -output_supply_port {vout VDD_CPU} \
-    -control_port {cpu_pwr_en} \
-    -on_state {on_state vin {cpu_pwr_en}}
+    -control_port {ctrl cpu_pwr_en} \
+    -on_state {on_state vin {ctrl}}
 
 # ----- 9. 设置隔离策略 -----
 set_isolation iso_cpu \
