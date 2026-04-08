@@ -14,6 +14,7 @@
 - 断电区域和有电区域之间的门怎么处理（隔离单元）
 - 不同电压区域之间怎么通信（电平转换器）
 - 断电后哪些数据需要保存（状态保持）
+- 每个房间的电源线和地线打包成一组来管理（供电集合 Supply Set）
 
 ---
 
@@ -114,7 +115,87 @@
     └──── 通过 Power Switch ──→ 可关断域的 Virtual VDD
 ```
 
-### 1.4.3 电源状态 (Power State)
+### 1.4.3 供电集合 (Supply Set) — UPF 2.0 核心概念
+
+**定义：** 将一组相关的供电网络（power、ground、以及可选的 nwell/pwell 偏置）打包成一个**逻辑集合**，作为一个整体来描述和传递供电关系。
+
+> Supply Set 是 UPF 2.0 相对于 UPF 1.0 最重要的新增概念之一。在 UPF 1.0 中，power net 和 ground net 是分别独立管理的；UPF 2.0 引入 Supply Set 后，将它们组合为一个整体，大幅简化了层次化设计中的电源描述与 IP 复用。
+
+**为什么需要 Supply Set？**
+
+```
+UPF 1.0 方式（分别管理 power 和 ground）：
+
+  set_domain_supply_net PD_CPU \
+      -primary_power_net  VDD_CPU \    ← 单独指定 power net
+      -primary_ground_net VSS          ← 单独指定 ground net
+
+  set_isolation iso_cpu \
+      -isolation_power_net  VDD \      ← 又要单独指定 power net
+      -isolation_ground_net VSS        ← 又要单独指定 ground net
+
+  → 每条命令都要分别写 power 和 ground
+  → 跨层次传递时，要分别映射每个 net
+  → 容易出错，且复用困难
+
+
+UPF 2.0 方式（Supply Set 统一管理）：
+
+  create_supply_set SS_CPU \
+      -function {power  VDD_CPU} \     ← power + ground 打包为一个集合
+      -function {ground VSS}
+
+  → 后续命令只需引用 SS_CPU 即可
+  → 跨层次传递时，只需映射一个 Supply Set
+  → 更简洁、更不容易出错
+```
+
+**芯片实体对应：**
+
+Supply Set 本身不直接对应芯片上的新物理结构，而是对**已有供电网络的逻辑分组**。但它在先进工艺中有重要意义：
+
+```
+Supply Set 可以包含的成员：
+
+  SS_CPU = {
+      power  → VDD_CPU       ← 芯片上: CPU 域的 VDD 电源网格
+      ground → VSS           ← 芯片上: CPU 域的 VSS 接地网格
+      nwell  → VNW_CPU       ← 芯片上: N 阱偏置电压网络 (可选)
+      pwell  → VPW_CPU       ← 芯片上: P 阱偏置电压网络 (可选)
+  }
+
+在先进 FinFET 工艺中 (7nm/5nm/3nm)：
+  → nwell/pwell 偏置可用于 Forward/Reverse Body Biasing
+  → 进一步降低漏电流或提升性能
+  → Supply Set 是描述这种需求的标准方式
+```
+
+**Supply Set Handle（句柄）：**
+
+UPF 2.0 还引入了 Supply Set Handle，允许通过**间接引用**访问域的供电集合：
+
+```tcl
+# 每个电源域自动有一个 .primary handle
+# 引用 PD_CPU 的主供电集合，无需知道具体网络名
+add_power_state PD_CPU.primary \
+    -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
+    -state {OFF -supply_expr {power == `{OFF}}}
+
+# 在 IP 复用场景中特别有用：
+# SoC 集成者不需要知道 IP 内部供电网络的具体名称
+# 只需通过 handle 进行映射
+```
+
+**Supply Set 在 UPF 流程中的位置：**
+
+```
+  create_supply_port  →  create_supply_net  →  create_supply_set  →  关联到域
+       (端口)               (网络)              (集合)              (使用)
+  
+  芯片 PAD         →  金属走线 Power Grid  →  逻辑分组           →  域的供电
+```
+
+### 1.4.4 电源状态 (Power State)
 
 **定义：** 描述在某一时刻，各个电源网络上的电压值组合。
 
@@ -128,7 +209,7 @@
 
 每种状态对应芯片上不同的电源模式，由 PMU（电源管理单元）硬件控制切换。
 
-### 1.4.4 低功耗策略单元
+### 1.4.5 低功耗策略单元
 
 在 UPF 中描述的各种低功耗策略，最终会变成芯片上的**物理单元**：
 
@@ -232,7 +313,20 @@ create_supply_port VSS -direction in
 connect_supply_net VDD -ports {VDD}
 connect_supply_net VSS -ports {VSS}
 
-# ----- 6. 设置域的供电 -----
+# ----- 6. 定义供电集合 (UPF 2.0) -----
+create_supply_set SS_TOP \
+    -function {power VDD} \
+    -function {ground VSS}
+
+create_supply_set SS_CPU \
+    -function {power VDD_CPU} \
+    -function {ground VSS}
+
+create_supply_set SS_GPU \
+    -function {power VDD_GPU} \
+    -function {ground VSS}
+
+# ----- 7. 设置域的供电 -----
 set_domain_supply_net PD_TOP \
     -primary_power_net VDD \
     -primary_ground_net VSS
@@ -241,7 +335,7 @@ set_domain_supply_net PD_CPU \
     -primary_power_net VDD_CPU \
     -primary_ground_net VSS
 
-# ----- 7. 定义电源开关 -----
+# ----- 8. 定义电源开关 -----
 create_power_switch SW_CPU \
     -domain PD_CPU \
     -input_supply_port {vin VDD} \
@@ -249,7 +343,7 @@ create_power_switch SW_CPU \
     -control_port {cpu_pwr_en} \
     -on_state {on_state vin {cpu_pwr_en}}
 
-# ----- 8. 设置隔离策略 -----
+# ----- 9. 设置隔离策略 -----
 set_isolation iso_cpu \
     -domain PD_CPU \
     -isolation_power_net VDD \
@@ -257,13 +351,13 @@ set_isolation iso_cpu \
     -clamp_value 0 \
     -applies_to outputs
 
-# ----- 9. 设置电平转换策略 -----
+# ----- 10. 设置电平转换策略 -----
 set_level_shifter ls_cpu_to_gpu \
     -domain PD_CPU \
     -applies_to outputs \
     -rule both
 
-# ----- 10. 设置保持策略 -----
+# ----- 11. 设置保持策略 -----
 set_retention ret_cpu \
     -domain PD_CPU \
     -retention_power_net VDD \
@@ -271,7 +365,7 @@ set_retention ret_cpu \
     -save_signal {save_cpu high} \
     -restore_signal {restore_cpu high}
 
-# ----- 11. 定义电源状态 -----
+# ----- 12. 定义电源状态 -----
 add_power_state PD_TOP.primary -state {FULL_ON -supply_expr {power == `{FULL_ON, 0.9}}}
 add_power_state PD_CPU.primary -state {ON -supply_expr {power == `{FULL_ON, 0.9}}} \
                                -state {OFF -supply_expr {power == `{OFF}}}
