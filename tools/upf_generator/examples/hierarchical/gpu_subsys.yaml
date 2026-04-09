@@ -96,6 +96,16 @@ sim_states:
   - domain: PD_GPU
     behavior: CORRUPT
 
+# --------------------------------
+# 子系统供电端口（从顶层接入的电源线）
+# --------------------------------
+supply_ports:
+  - name: VDD
+    direction: in
+    description: "从顶层接入的主电源 0.9V"
+  - name: VSS
+    direction: in
+    description: "从顶层接入的主地线"
+
 # GPU 不做 Retention（关断后完全重新初始化）
-supply_ports: []
 retention_strategies: []

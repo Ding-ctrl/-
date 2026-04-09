@@ -82,7 +82,17 @@ sim_states:
   - domain: PD_NPU
     behavior: CORRUPT
 
+# --------------------------------
+# 子系统供电端口（从顶层接入的电源线）
+# --------------------------------
+supply_ports:
+  - name: VDD
+    direction: in
+    description: "从顶层接入的主电源 0.9V"
+  - name: VSS
+    direction: in
+    description: "从顶层接入的主地线"
+
 # NPU 不做 Retention（模型权重存在 DDR 中）
-supply_ports: []
 level_shifters: []
 retention_strategies: []

@@ -250,6 +250,19 @@ sim_states:
   - domain: PD_CORE3
     behavior: CORRUPT
 
+# --------------------------------
+# 子系统供电端口（从顶层接入的电源线）
+# --------------------------------
+# 层次化设计中，子系统需要声明从父层级接入的供电端口
+# 这些端口会在子系统 UPF 中生成 create_supply_port，
+# 并在顶层 UPF 中通过 connect_supply_net 连接到全局电源网络
+supply_ports:
+  - name: VDD
+    direction: in
+    description: "从顶层接入的主电源 0.9V"
+  - name: VSS
+    direction: in
+    description: "从顶层接入的主地线"
+
 # 不需要的段落
-supply_ports: []
 level_shifters: []

@@ -100,27 +100,69 @@ includes:
     scope: "u_gpu"
 ```
 
+### 跨层次电源线连接
+
+层次化设计的关键：**子系统 YAML 必须声明 `supply_ports`**（从父层级接入的电源端口），工具会自动：
+
+1. **子系统 UPF** — 生成 `create_supply_port` + `create_supply_net` + `connect_supply_net`（子系统内部连接）
+2. **顶层 UPF** — 在 `load_upf` 之后生成 `connect_supply_net`（跨层次连接顶层网络 → 子系统端口）
+
+```yaml
+# cpu_subsys.yaml (子系统)
+supply_ports:
+  - name: VDD             # 子系统从父层级接入的电源
+    direction: in
+  - name: VSS
+    direction: in
+```
+
+生成的跨层次连接 UPF 代码：
+
+```tcl
+# mobile_star_top.upf (顶层) — 自动生成的跨层次连接
+load_upf cpu_subsys.upf -scope u_cpu_subsys
+connect_supply_net VDD  -ports {u_cpu_subsys/VDD}   ;# 顶层 VDD → CPU 子系统
+connect_supply_net VSS  -ports {u_cpu_subsys/VSS}
+```
+
+```tcl
+# cpu_subsys.upf (子系统) — 声明供电端口 + 内部连接
+create_supply_port VDD -direction in
+create_supply_port VSS -direction in
+create_supply_net VDD -domain PD_CPU
+create_supply_net VSS -domain PD_CPU
+connect_supply_net VDD -ports {VDD}
+connect_supply_net VSS -ports {VSS}
+```
+
 ### 生成的 UPF 结构
 
-**层次化模式（默认）** — 每个子系统生成独立 UPF，顶层用 `load_upf` 引用：
+**层次化模式（默认）** — 每个子系统生成独立 UPF，顶层用 `load_upf` + `connect_supply_net` 连接：
 
 ```tcl
 # mobile_star_top.upf (顶层)
 upf_version 2.0
 create_power_domain PD_TOP -include_scope
+create_supply_port VDD -direction in
+create_supply_net VDD -domain PD_TOP
 ...
-# 层次化 UPF: 加载子系统 UPF
+# 层次化 UPF: 加载子系统 + 跨层次电源连接
 load_upf cpu_subsys.upf -scope u_cpu_subsys
+connect_supply_net VDD  -ports {u_cpu_subsys/VDD}
+connect_supply_net VSS  -ports {u_cpu_subsys/VSS}
+
 load_upf gpu_subsys.upf -scope u_gpu
-load_upf npu_subsys.upf -scope u_npu
-load_upf peri_subsys.upf -scope u_peripherals
+connect_supply_net VDD  -ports {u_gpu/VDD}
+connect_supply_net VSS  -ports {u_gpu/VSS}
 ```
 
 ```tcl
 # cpu_subsys.upf (子系统独立 UPF)
 upf_version 2.0
 create_power_domain PD_CPU -include_scope
-create_power_domain PD_CORE0 -elements {u_core0}
+create_supply_port VDD -direction in
+create_supply_port VSS -direction in
+create_supply_net VDD -domain PD_CPU
 ...
 ```
 

@@ -416,13 +416,13 @@ def gen_sim_states(sim_states):
 
 
 def gen_load_upf(subsystems, out_dir):
-    """生成层次化 load_upf 命令，引用各子系统 UPF 文件"""
+    """生成层次化 load_upf 命令 + 跨层次供电网络连接"""
     if not subsystems:
         return []
     lines = [
         "",
         "# ================================================================",
-        "# 层次化 UPF: 加载子系统 UPF",
+        "# 层次化 UPF: 加载子系统 UPF + 跨层次电源连接",
         "# ================================================================",
     ]
     for scope, sub_spec, _sub_path in subsystems:
@@ -432,6 +432,20 @@ def gen_load_upf(subsystems, out_dir):
         desc = sub_proj.get("description", sub_name)
         lines.append(f"\n# {desc}")
         lines.append(f"load_upf {sub_upf} -scope {scope}")
+
+        # 跨层次电源线连接:
+        # 将顶层供电网络连接到子系统的供电端口
+        sub_ports = sub_spec.get("supply_ports", [])
+        if sub_ports:
+            lines.append(f"# --- 跨层次供电连接: 顶层 → {scope} ---")
+            for p in sub_ports:
+                port_name = p["name"]
+                # 顶层网络名 → 子系统 scope 下的端口
+                lines.append(
+                    f"connect_supply_net {port_name} "
+                    f" -ports {{{scope}/{port_name}}}"
+                )
+
     return lines
 
 
