@@ -1,0 +1,425 @@
+# ================================================================
+# MobileStar SoC — 完整低功耗设计信息统计
+# ================================================================
+# 对应: docs/upf2.0/Ch10 完整 SoC 低功耗设计实战
+# 用法: python gen_upf.py examples/mobile_star.yaml
+# ================================================================
+
+# --------------------------------
+# 基本信息
+# --------------------------------
+project:
+  name: "MobileStar"
+  description: "MobileStar SoC Top-Level UPF"
+  upf_version: "2.0"
+  output_file: "mobile_star_top.upf"
+
+# --------------------------------
+# 顶层供电端口
+# --------------------------------
+supply_ports:
+  - name: VDD
+    direction: in
+    description: "主电源 0.9V"
+  - name: VSS
+    direction: in
+    description: "主地线"
+  - name: VDDQ
+    direction: in
+    description: "DDR I/O 电源 1.1V"
+
+# --------------------------------
+# 电源域定义
+# --------------------------------
+power_domains:
+  - name: PD_TOP
+    elements: null
+    is_top: true
+    primary_power: VDD
+    primary_ground: VSS
+    description: "顶层域（常开域）— PMU, GIC, Timer, RTC, WakeUp Logic"
+
+  - name: PD_CPU
+    elements: "u_cpu_subsys"
+    is_top: false
+    primary_power: VDD
+    primary_ground: VSS
+    description: "CPU 子系统域"
+
+  - name: PD_CORE0
+    elements: "u_cpu_subsys/u_core0"
+    is_top: false
+    primary_power: VDD_SW_CORE0
+    primary_ground: VSS
+    description: "A55 小核 Core0"
+
+  - name: PD_CORE1
+    elements: "u_cpu_subsys/u_core1"
+    is_top: false
+    primary_power: VDD_SW_CORE1
+    primary_ground: VSS
+    description: "A55 小核 Core1"
+
+  - name: PD_CORE2
+    elements: "u_cpu_subsys/u_core2"
+    is_top: false
+    primary_power: VDD_SW_CORE2
+    primary_ground: VSS
+    description: "A76 大核 Core2"
+
+  - name: PD_CORE3
+    elements: "u_cpu_subsys/u_core3"
+    is_top: false
+    primary_power: VDD_SW_CORE3
+    primary_ground: VSS
+    description: "A76 大核 Core3"
+
+  - name: PD_GPU
+    elements: "u_gpu"
+    is_top: false
+    primary_power: VDD_SW_GPU
+    primary_ground: VSS
+    description: "GPU 域"
+
+  - name: PD_NPU
+    elements: "u_npu"
+    is_top: false
+    primary_power: VDD_SW_NPU
+    primary_ground: VSS
+    description: "NPU 域"
+
+  - name: PD_DDR
+    elements: "u_ddr_ctrl"
+    is_top: false
+    primary_power: VDD
+    primary_ground: VSS
+    description: "DDR 控制器域（通常不关断，但支持低功耗模式）"
+
+  - name: PD_PERI
+    elements: "u_peripherals"
+    is_top: false
+    primary_power: VDD_SW_PERI
+    primary_ground: VSS
+    description: "外设域 — UART/SPI/I2C"
+
+# --------------------------------
+# 可切换供电网络
+# --------------------------------
+switched_supply_nets:
+  - name: VDD_SW_CORE0
+    domain: PD_CORE0
+  - name: VDD_SW_CORE1
+    domain: PD_CORE1
+  - name: VDD_SW_CORE2
+    domain: PD_CORE2
+  - name: VDD_SW_CORE3
+    domain: PD_CORE3
+  - name: VDD_SW_GPU
+    domain: PD_GPU
+  - name: VDD_SW_NPU
+    domain: PD_NPU
+  - name: VDD_SW_PERI
+    domain: PD_PERI
+
+# --------------------------------
+# 供电集合 (UPF 2.0)
+# --------------------------------
+supply_sets:
+  - name: SS_TOP
+    power_net: VDD
+    ground_net: VSS
+  - name: SS_CPU
+    power_net: VDD
+    ground_net: VSS
+  - name: SS_CORE0
+    power_net: VDD_SW_CORE0
+    ground_net: VSS
+  - name: SS_CORE1
+    power_net: VDD_SW_CORE1
+    ground_net: VSS
+  - name: SS_CORE2
+    power_net: VDD_SW_CORE2
+    ground_net: VSS
+  - name: SS_CORE3
+    power_net: VDD_SW_CORE3
+    ground_net: VSS
+  - name: SS_GPU
+    power_net: VDD_SW_GPU
+    ground_net: VSS
+  - name: SS_NPU
+    power_net: VDD_SW_NPU
+    ground_net: VSS
+  - name: SS_DDR
+    power_net: VDD
+    ground_net: VSS
+  - name: SS_DDR_IO
+    power_net: VDDQ
+    ground_net: VSS
+  - name: SS_PERI
+    power_net: VDD_SW_PERI
+    ground_net: VSS
+  - name: SS_ALWAYS_ON
+    power_net: VDD
+    ground_net: VSS
+
+# --------------------------------
+# 电源开关
+# --------------------------------
+power_switches:
+  - name: SW_CORE0
+    domain: PD_CORE0
+    input_supply: VDD
+    output_supply: VDD_SW_CORE0
+    control_port: ctrl
+    control_net: pmu_core0_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core0_pwr_ack
+
+  - name: SW_CORE1
+    domain: PD_CORE1
+    input_supply: VDD
+    output_supply: VDD_SW_CORE1
+    control_port: ctrl
+    control_net: pmu_core1_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core1_pwr_ack
+
+  - name: SW_CORE2
+    domain: PD_CORE2
+    input_supply: VDD
+    output_supply: VDD_SW_CORE2
+    control_port: ctrl
+    control_net: pmu_core2_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core2_pwr_ack
+
+  - name: SW_CORE3
+    domain: PD_CORE3
+    input_supply: VDD
+    output_supply: VDD_SW_CORE3
+    control_port: ctrl
+    control_net: pmu_core3_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core3_pwr_ack
+
+  - name: SW_GPU
+    domain: PD_GPU
+    input_supply: VDD
+    output_supply: VDD_SW_GPU
+    control_port: ctrl
+    control_net: pmu_gpu_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_gpu_pwr_ack
+
+  - name: SW_NPU
+    domain: PD_NPU
+    input_supply: VDD
+    output_supply: VDD_SW_NPU
+    control_port: ctrl
+    control_net: pmu_npu_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_npu_pwr_ack
+
+  - name: SW_PERI
+    domain: PD_PERI
+    input_supply: VDD
+    output_supply: VDD_SW_PERI
+    control_port: ctrl
+    control_net: pmu_peri_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_peri_pwr_ack
+
+# --------------------------------
+# 隔离策略
+# --------------------------------
+isolation_strategies:
+  - name: iso_core0
+    domain: PD_CORE0
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core1
+    domain: PD_CORE1
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core2
+    domain: PD_CORE2
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core3
+    domain: PD_CORE3
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_gpu
+    domain: PD_GPU
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_npu
+    domain: PD_NPU
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_peri
+    domain: PD_PERI
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core0_axi
+    domain: PD_CORE0
+    elements: "u_cpu_subsys/u_core0/axi_*"
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: latch
+    applies_to: outputs
+
+# --------------------------------
+# 电平转换
+# --------------------------------
+level_shifters:
+  - name: ls_gpu_out
+    domain: PD_GPU
+    applies_to: outputs
+    rule: low_to_high
+
+  - name: ls_gpu_in
+    domain: PD_GPU
+    applies_to: inputs
+    rule: high_to_low
+
+# --------------------------------
+# 状态保持
+# --------------------------------
+retention_strategies:
+  - name: ret_core0
+    domain: PD_CORE0
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core0_save
+    save_level: high
+    restore_signal: pmu_core0_restore
+    restore_level: high
+
+  - name: ret_core1
+    domain: PD_CORE1
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core1_save
+    save_level: high
+    restore_signal: pmu_core1_restore
+    restore_level: high
+
+  - name: ret_core2
+    domain: PD_CORE2
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core2_save
+    save_level: high
+    restore_signal: pmu_core2_restore
+    restore_level: high
+
+  - name: ret_core3
+    domain: PD_CORE3
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core3_save
+    save_level: high
+    restore_signal: pmu_core3_restore
+    restore_level: high
+
+# --------------------------------
+# 电源状态定义
+# --------------------------------
+power_states:
+  - target: SS_TOP
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.9"
+
+  - target: SS_CORE0
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: ON_LOW
+        expr: "FULL_ON, 0.75"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_CORE1
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: ON_LOW
+        expr: "FULL_ON, 0.75"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_CORE2
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_CORE3
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_GPU
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.8"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_NPU
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_PERI
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+# --------------------------------
+# 仿真行为
+# --------------------------------
+sim_states:
+  - domain: PD_CORE0
+    behavior: CORRUPT
+  - domain: PD_CORE1
+    behavior: CORRUPT
+  - domain: PD_CORE2
+    behavior: CORRUPT
+  - domain: PD_CORE3
+    behavior: CORRUPT
+  - domain: PD_GPU
+    behavior: CORRUPT
+  - domain: PD_NPU
+    behavior: CORRUPT
+  - domain: PD_PERI
+    behavior: CORRUPT
+  - domain: PD_TOP
+    behavior: NORMAL
+  - domain: PD_DDR
+    behavior: NORMAL

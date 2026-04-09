@@ -1,0 +1,222 @@
+# ================================================================
+# UPF 2.0 低功耗设计信息统计模板
+# ================================================================
+# 使用说明:
+#   1. 根据实际的低功耗设计需求，填写下面各段信息
+#   2. 不需要的功能/模块，可以直接删除对应条目或留空列表 []
+#   3. 填写完成后，运行 gen_upf.py 即可生成标准 UPF 2.0 文件
+#   4. 本模板以最复杂的 SoC 多电源域设计为基础，简单设计只需填写部分字段
+# ================================================================
+
+# --------------------------------
+# 基本信息
+# --------------------------------
+project:
+  name: "MySoC"                    # 芯片/项目名称
+  description: "My SoC Top-Level UPF"   # 描述
+  upf_version: "2.0"              # UPF 标准版本 (1.0 / 2.0)
+  output_file: "my_soc_top.upf"   # 生成的 UPF 文件名
+
+# --------------------------------
+# 顶层供电端口 (芯片 PAD 级别)
+# --------------------------------
+supply_ports:
+  - name: VDD
+    direction: in       # in / out
+    description: "主电源"
+  - name: VSS
+    direction: in
+    description: "主地线"
+  # 如果有额外电源(例如 DDR IO 电源)，在此添加:
+  # - name: VDDQ
+  #   direction: in
+  #   description: "DDR I/O 电源 1.1V"
+
+# --------------------------------
+# 电源域定义
+# --------------------------------
+# 每个电源域包含:
+#   name       - 域名称 (如 PD_TOP)
+#   elements   - RTL 层次路径 (顶层域用 -include_scope，填 null)
+#   is_top     - 是否为顶层域 (true/false)
+#   primary_power  - 主电源网络名
+#   primary_ground - 主地网络名
+#   description    - 可选描述
+# --------------------------------
+power_domains:
+  - name: PD_TOP
+    elements: null          # 顶层域: 使用 -include_scope
+    is_top: true
+    primary_power: VDD
+    primary_ground: VSS
+    description: "顶层域（常开域）"
+
+  # 示例：可关断域
+  # - name: PD_CORE0
+  #   elements: "u_cpu_subsys/u_core0"
+  #   is_top: false
+  #   primary_power: VDD_SW_CORE0
+  #   primary_ground: VSS
+  #   description: "CPU Core0 域"
+
+# --------------------------------
+# 可切换供电网络 (Switched Supply Nets)
+# --------------------------------
+# 常开供电网络由 supply_ports 自动创建，此处只需定义可切换网络
+# 每个条目:
+#   name   - 网络名称 (如 VDD_SW_CORE0)
+#   domain - 所属电源域
+# --------------------------------
+switched_supply_nets: []
+  # - name: VDD_SW_CORE0
+  #   domain: PD_CORE0
+
+# --------------------------------
+# 供电集合 (UPF 2.0 Supply Sets)
+# --------------------------------
+# 只在 upf_version == 2.0 时生效
+# 将 power/ground 网络逻辑分组，便于隔离/保持/状态表引用
+# 每个条目:
+#   name        - 供电集合名 (如 SS_CORE0)
+#   power_net   - 电源网络
+#   ground_net  - 地网络
+# --------------------------------
+supply_sets: []
+  # - name: SS_TOP
+  #   power_net: VDD
+  #   ground_net: VSS
+  # - name: SS_CORE0
+  #   power_net: VDD_SW_CORE0
+  #   ground_net: VSS
+  # - name: SS_ALWAYS_ON
+  #   power_net: VDD
+  #   ground_net: VSS
+
+# --------------------------------
+# 电源开关 (Power Switches)
+# --------------------------------
+# 每个条目:
+#   name            - 开关名称
+#   domain          - 所在电源域
+#   input_supply    - 输入供电网络
+#   output_supply   - 输出供电网络
+#   control_port    - 控制端口名称
+#   control_net     - 控制信号网络名
+#   on_state_name   - ON 状态名 (默认 "on")
+#   ack_port        - ACK 端口名称 (可选)
+#   ack_net         - ACK 信号网络名 (可选)
+# --------------------------------
+power_switches: []
+  # - name: SW_CORE0
+  #   domain: PD_CORE0
+  #   input_supply: VDD
+  #   output_supply: VDD_SW_CORE0
+  #   control_port: ctrl
+  #   control_net: pmu_core0_pwr_en
+  #   on_state_name: "on"
+  #   ack_port: ack
+  #   ack_net: pmu_core0_pwr_ack
+
+# --------------------------------
+# 隔离策略 (Isolation Strategies)
+# --------------------------------
+# 每个条目:
+#   name                  - 策略名称
+#   domain                - 被隔离的域
+#   isolation_supply_set  - 隔离供电集合 (UPF2.0, 可选)
+#   isolation_power_net   - 隔离电源网络 (UPF1.0, 可选, supply_set 优先)
+#   isolation_ground_net  - 隔离地网络 (UPF1.0, 可选)
+#   clamp_value           - 钳位值 (0 / 1 / latch)
+#   applies_to            - 应用方向 (inputs / outputs / both)
+#   elements              - 仅对特定信号 (可选，默认域所有信号)
+# --------------------------------
+isolation_strategies: []
+  # - name: iso_core0
+  #   domain: PD_CORE0
+  #   isolation_supply_set: SS_ALWAYS_ON
+  #   clamp_value: 0
+  #   applies_to: outputs
+  # - name: iso_core0_axi
+  #   domain: PD_CORE0
+  #   elements: "u_cpu_subsys/u_core0/axi_*"
+  #   isolation_supply_set: SS_ALWAYS_ON
+  #   clamp_value: latch
+  #   applies_to: outputs
+
+# --------------------------------
+# 电平转换 (Level Shifters)
+# --------------------------------
+# 每个条目:
+#   name        - 策略名称
+#   domain      - 源域
+#   applies_to  - 方向 (inputs / outputs / both)
+#   rule        - 转换规则 (low_to_high / high_to_low / both)
+# --------------------------------
+level_shifters: []
+  # - name: ls_gpu_out
+  #   domain: PD_GPU
+  #   applies_to: outputs
+  #   rule: low_to_high
+  # - name: ls_gpu_in
+  #   domain: PD_GPU
+  #   applies_to: inputs
+  #   rule: high_to_low
+
+# --------------------------------
+# 状态保持 (Retention Strategies)
+# --------------------------------
+# 每个条目:
+#   name                  - 策略名称
+#   domain                - 需要保持的域
+#   retention_supply_set  - 保持供电集合 (UPF2.0, 可选)
+#   retention_power_net   - 保持电源网络 (UPF1.0, 可选)
+#   retention_ground_net  - 保持地网络 (UPF1.0, 可选)
+#   save_signal           - 保存信号名
+#   save_level            - 保存信号有效电平 (high / low)
+#   restore_signal        - 恢复信号名
+#   restore_level         - 恢复信号有效电平 (high / low)
+# --------------------------------
+retention_strategies: []
+  # - name: ret_core0
+  #   domain: PD_CORE0
+  #   retention_supply_set: SS_ALWAYS_ON
+  #   save_signal: pmu_core0_save
+  #   save_level: high
+  #   restore_signal: pmu_core0_restore
+  #   restore_level: high
+
+# --------------------------------
+# 电源状态定义 (Power States)
+# --------------------------------
+# 每个条目:
+#   target  - 目标 (supply_set 名或 supply_net 名)
+#   states  - 状态列表:
+#     - name    - 状态名 (如 ON_HIGH / OFF)
+#       expr    - 供电表达式 (如 "FULL_ON, 0.9" 或 "OFF")
+# --------------------------------
+power_states: []
+  # - target: SS_TOP
+  #   states:
+  #     - name: "ON"
+  #       expr: "FULL_ON, 0.9"
+  # - target: SS_CORE0
+  #   states:
+  #     - name: ON_HIGH
+  #       expr: "FULL_ON, 0.9"
+  #     - name: ON_LOW
+  #       expr: "FULL_ON, 0.75"
+  #     - name: "OFF"
+  #       expr: "OFF"
+
+# --------------------------------
+# 仿真行为 (Simulation States)
+# --------------------------------
+# 每个条目:
+#   domain    - 电源域
+#   behavior  - 行为 (CORRUPT / NORMAL)
+# --------------------------------
+sim_states: []
+  # - domain: PD_CORE0
+  #   behavior: CORRUPT
+  # - domain: PD_TOP
+  #   behavior: NORMAL
