@@ -388,7 +388,125 @@ add_power_state PD_CPU.primary -state {ON -supply_expr {power == `{FULL_ON, 0.9}
 
 ---
 
-## 1.8 本章小结
+## 1.8 UPF 在主流 EDA 工具中的支持
+
+### 1.8.1 综合工具
+
+| 工具 | 厂商 | UPF 支持版本 | 主要功能 |
+|------|------|-------------|---------|
+| Design Compiler (DC) | Synopsys | UPF 2.0/2.1 | 功耗意图驱动综合，自动插入 ISO/LS/Retention |
+| Genus | Cadence | UPF 2.0/2.1 | 低功耗综合，支持 CPF→UPF 转换 |
+| Precision RTL | Siemens EDA | UPF 2.0 | FPGA/ASIC 低功耗综合 |
+
+### 1.8.2 仿真工具
+
+| 工具 | 厂商 | 关键能力 |
+|------|------|---------|
+| VCS | Synopsys | UPF-aware 仿真，Simstate 控制，Power-Aware Coverage |
+| Xcelium | Cadence | 原生 UPF 支持，多域并行仿真 |
+| Questa | Siemens EDA | UPF 仿真，自动检测低功耗违规 |
+
+### 1.8.3 布局布线工具
+
+| 工具 | 厂商 | 关键能力 |
+|------|------|---------|
+| ICC2 (Fusion Compiler) | Synopsys | Power Domain Floorplan，Power Grid 自动生成 |
+| Innovus | Cadence | 多电压域布局，Switch Cell 自动放置 |
+| Aprisa | Siemens EDA | 低功耗 P&R 支持 |
+
+### 1.8.4 验证工具
+
+| 工具 | 厂商 | 关键能力 |
+|------|------|---------|
+| VC LP | Synopsys | 低功耗形式验证，UPF vs RTL 一致性检查 |
+| Conformal LP | Cadence | 低功耗等价性验证 |
+| Formality | Synopsys | Power-Aware 逻辑等价性 |
+
+### 1.8.5 分析工具
+
+| 工具 | 厂商 | 关键能力 |
+|------|------|---------|
+| PrimeTime PX | Synopsys | 功耗分析，IR Drop 估算 |
+| Voltus | Cadence | 动态/静态功耗分析，EM/IR 分析 |
+| PowerPro | Siemens EDA | RTL 功耗优化建议 |
+
+> **工具链典型流程：** Design Compiler (综合+UPF) → ICC2 (P&R+Power Grid) → PrimeTime PX (功耗签核) → VCS (Power-Aware 仿真) → VC LP (形式验证)
+
+---
+
+## 1.9 UPF 编写的常见误区与最佳实践
+
+### 误区 1：将 UPF 视为"附加项"
+
+```
+❌ 错误做法：先完成 RTL 设计，最后补写 UPF
+   → 可能发现域划分与 RTL 架构冲突
+   → 跨域信号过多导致面积爆炸
+   → 时序闭合困难
+
+✅ 正确做法：架构阶段同步规划 UPF
+   → 域划分影响 RTL 模块划分
+   → 跨域信号在架构阶段就需要最小化
+   → UPF 和 RTL 协同迭代
+```
+
+### 误区 2：过度使用 Retention
+
+```
+❌ 错误做法：对域内所有寄存器都做 Retention
+   → Retention FF 面积增加 30-50%
+   → 域内所有 FF 替换导致面积/功耗/时序恶化
+
+✅ 正确做法：只对关键寄存器做 Retention
+   → 状态机、配置寄存器、关键上下文
+   → 数据寄存器可从内存重新加载
+   → 使用 -elements 精确指定
+```
+
+### 误区 3：忽视跨域时序
+
+```
+❌ 错误做法：不考虑 ISO/LS 对时序的影响
+   → 关键路径穿越域边界
+   → ISO Cell + Level Shifter 引入 0.2-0.5ns 延迟
+   → 时序闭合失败
+
+✅ 正确做法：在架构阶段优化跨域路径
+   → 关键路径不跨域，或预留时序裕量
+   → 使用 Combo Cell 减少延迟
+   → STA 约束中包含 ISO/LS 延迟
+```
+
+### 误区 4：Supply Set 与 Supply Net 混用
+
+```
+❌ 错误做法（UPF 2.0 项目中仍用 1.0 风格）：
+   set_isolation iso_cpu \
+       -isolation_power_net VDD \
+       -isolation_ground_net VSS
+
+✅ 正确做法（UPF 2.0 推荐）：
+   set_isolation iso_cpu \
+       -isolation_supply_set SS_ALWAYS_ON
+   → 使用 Supply Set 统一管理，更简洁
+   → 跨层次传递时只需映射一个 Supply Set
+```
+
+### 误区 5：遗漏 Always-On 逻辑
+
+```
+❌ 错误做法：可关断域内的唤醒逻辑未使用 Always-On 供电
+   → 域关断后无法检测唤醒事件
+   → 芯片无法从睡眠状态唤醒
+
+✅ 正确做法：明确标识 Always-On 信号
+   → 唤醒检测、中断传递等使用 Always-On Buffer
+   → 在 UPF 中用 set_repeater 或 always-on cell 描述
+```
+
+---
+
+## 1.10 本章小结
 
 - UPF 是**描述芯片低功耗意图**的标准语言，不是设计语言
 - UPF 中的每条命令最终都会映射到芯片上的**物理结构或逻辑行为**
