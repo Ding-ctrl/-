@@ -487,7 +487,9 @@ def generate_upf(spec, subsystems=None, out_dir=""):
 def write_upf(upf_lines, out_path):
     """将 UPF 行列表写入文件"""
     upf_text = "\n".join(upf_lines) + "\n"
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(upf_text)
     return out_path
