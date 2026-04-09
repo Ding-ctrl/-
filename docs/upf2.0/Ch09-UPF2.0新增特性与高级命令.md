@@ -442,7 +442,136 @@ UPF 2.0 特性全景图：
 
 ---
 
-## 9.8 本章小结
+## 9.8 层次化 UPF 设计实践
+
+### 9.8.1 load_upf 命令
+
+```tcl
+# load_upf 用于在顶层引用子系统的 UPF 文件
+load_upf sub_system.upf -scope instance_path
+```
+
+**层次化 UPF 的典型结构：**
+
+```
+soc_top.upf (顶层)
+  │
+  ├── create_power_domain PD_TOP ...
+  ├── create_supply_port VDD / VSS ...
+  ├── create_supply_net VDD / VSS ...
+  │
+  ├── load_upf cpu_subsys.upf -scope u_cpu
+  │     └── cpu_subsys.upf:
+  │           ├── create_power_domain PD_CPU -include_scope
+  │           ├── create_power_domain PD_CORE0 ...
+  │           ├── create_supply_port VDD -direction in
+  │           ├── create_power_switch SW_CORE0 ...
+  │           ├── set_isolation ...
+  │           └── set_retention ...
+  │
+  ├── load_upf gpu_subsys.upf -scope u_gpu
+  │     └── gpu_subsys.upf: (类似结构)
+  │
+  ├── connect_supply_net VDD -ports {u_cpu/VDD}  ← 跨层次连接
+  ├── connect_supply_net VSS -ports {u_cpu/VSS}
+  ├── connect_supply_net VDD -ports {u_gpu/VDD}
+  ├── connect_supply_net VSS -ports {u_gpu/VSS}
+  │
+  └── add_power_state ... (系统级电源状态)
+```
+
+### 9.8.2 层次化 vs 平坦化的选择
+
+```
+层次化 UPF (load_upf):
+  
+  优点：
+  ✅ 各子系统独立开发和验证
+  ✅ IP 复用更容易
+  ✅ 团队并行开发
+  ✅ 便于维护和调试
+  
+  缺点：
+  ❌ 跨层次电源连接需要额外描述
+  ❌ 工具的层次化支持需要验证
+  ❌ 调试时需要跟踪多个文件
+
+平坦化 UPF (单文件):
+  
+  优点：
+  ✅ 简单直观，所有信息在一个文件中
+  ✅ 工具兼容性最好
+  ✅ 调试方便
+  
+  缺点：
+  ❌ 大型 SoC 文件巨大（数千行）
+  ❌ IP 复用困难
+  ❌ 团队协作困难
+
+  建议：
+  ├── 小型设计 (< 5 个域): 平坦化
+  ├── 中型设计 (5-20 个域): 按子系统层次化
+  └── 大型 SoC (> 20 个域): 层次化 + Power Model
+```
+
+### 9.8.3 策略合并与自动推断
+
+UPF 2.0 支持策略的**自动推断和合并**：
+
+```tcl
+# 场景：IP 内部已有隔离，SoC 层也定义了隔离
+# UPF 2.0 工具可以自动检测并避免重复插入
+
+# IP 内部 UPF:
+set_isolation iso_ip_internal \
+    -domain PD_IP \
+    -clamp_value 0 \
+    -applies_to outputs
+
+set_port_attributes \
+    -ports {data_out[31:0]} \
+    -attribute {UPF_is_isolated TRUE}  ← 声明已隔离
+
+# SoC 顶层 UPF:
+set_isolation iso_ip_external \
+    -domain PD_IP \
+    -clamp_value 0 \
+    -applies_to outputs
+
+# EDA 工具识别到 data_out 已有 UPF_is_isolated 属性
+# → 不会重复插入隔离单元
+# → 避免了面积浪费和性能损失
+```
+
+### 9.8.4 UPF 3.0 (IEEE 1801-2018) 展望
+
+```
+UPF 3.0 的主要新增特性：
+
+1. 增强的供电描述
+   - 支持更复杂的电压调节器建模
+   - 支持多轨电源 (Multi-rail Supply)
+   - 更好的模拟/混合信号支持
+
+2. 改进的仿真控制
+   - 更细粒度的 Simstate 控制
+   - 支持 partial power-down 仿真
+   - 改进的 X 传播模型
+
+3. 先进工艺支持
+   - 更好的 FinFET/GAA 偏置建模
+   - 支持 Back-Bias 控制
+   - 多阈值电压混合使用的描述
+
+4. 系统级功耗意图
+   - 支持芯片间的功耗描述（Chiplet）
+   - 支持 Package-level 电源描述
+   - 与系统级功耗管理协议的集成
+```
+
+---
+
+## 9.9 本章小结
 
 | 命令/特性 | 芯片设计中的意义 |
 |-----------|----------------|
