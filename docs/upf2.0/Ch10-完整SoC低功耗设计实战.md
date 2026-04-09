@@ -127,7 +127,58 @@ connect_supply_net VDD  -ports {VDD}
 connect_supply_net VSS  -ports {VSS}
 connect_supply_net VDDQ -ports {VDDQ}
 
-# --- 为各域设置供电 ---
+# --- 定义供电集合 (UPF 2.0 Supply Set) ---
+# Supply Set 将 power/ground 网络逻辑分组，便于复用与层次化集成
+create_supply_set SS_TOP \
+    -function {power VDD} \
+    -function {ground VSS}
+
+create_supply_set SS_CPU \
+    -function {power VDD} \
+    -function {ground VSS}
+
+create_supply_set SS_CORE0 \
+    -function {power VDD_SW_CORE0} \
+    -function {ground VSS}
+
+create_supply_set SS_CORE1 \
+    -function {power VDD_SW_CORE1} \
+    -function {ground VSS}
+
+create_supply_set SS_CORE2 \
+    -function {power VDD_SW_CORE2} \
+    -function {ground VSS}
+
+create_supply_set SS_CORE3 \
+    -function {power VDD_SW_CORE3} \
+    -function {ground VSS}
+
+create_supply_set SS_GPU \
+    -function {power VDD_SW_GPU} \
+    -function {ground VSS}
+
+create_supply_set SS_NPU \
+    -function {power VDD_SW_NPU} \
+    -function {ground VSS}
+
+create_supply_set SS_DDR \
+    -function {power VDD} \
+    -function {ground VSS}
+
+create_supply_set SS_DDR_IO \
+    -function {power VDDQ} \
+    -function {ground VSS}
+
+create_supply_set SS_PERI \
+    -function {power VDD_SW_PERI} \
+    -function {ground VSS}
+
+# 常开域的供电集合（用于隔离和 Retention 单元供电）
+create_supply_set SS_ALWAYS_ON \
+    -function {power VDD} \
+    -function {ground VSS}
+
+# --- 为各域关联供电集合 ---
 set_domain_supply_net PD_TOP \
     -primary_power_net VDD \
     -primary_ground_net VSS
@@ -239,53 +290,46 @@ create_power_switch SW_PERI \
 # --- CPU 核心隔离 ---
 set_isolation iso_core0 \
     -domain PD_CORE0 \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
 set_isolation iso_core1 \
     -domain PD_CORE1 \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
 set_isolation iso_core2 \
     -domain PD_CORE2 \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
 set_isolation iso_core3 \
     -domain PD_CORE3 \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
 # --- GPU 隔离 ---
 set_isolation iso_gpu \
     -domain PD_GPU \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
 # --- NPU 隔离 ---
 set_isolation iso_npu \
     -domain PD_NPU \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
 # --- 外设隔离 ---
 set_isolation iso_peri \
     -domain PD_PERI \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 \
     -applies_to outputs
 
@@ -293,8 +337,7 @@ set_isolation iso_peri \
 set_isolation iso_core0_axi \
     -domain PD_CORE0 \
     -elements {u_cpu_subsys/u_core0/axi_*} \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value latch \
     -applies_to outputs
 
@@ -320,29 +363,25 @@ set_level_shifter ls_gpu_in \
 # --- CPU 核心寄存器保持 ---
 set_retention ret_core0 \
     -domain PD_CORE0 \
-    -retention_power_net VDD \
-    -retention_ground_net VSS \
+    -retention_supply_set SS_ALWAYS_ON \
     -save_signal    {pmu_core0_save    high} \
     -restore_signal {pmu_core0_restore high}
 
 set_retention ret_core1 \
     -domain PD_CORE1 \
-    -retention_power_net VDD \
-    -retention_ground_net VSS \
+    -retention_supply_set SS_ALWAYS_ON \
     -save_signal    {pmu_core1_save    high} \
     -restore_signal {pmu_core1_restore high}
 
 set_retention ret_core2 \
     -domain PD_CORE2 \
-    -retention_power_net VDD \
-    -retention_ground_net VSS \
+    -retention_supply_set SS_ALWAYS_ON \
     -save_signal    {pmu_core2_save    high} \
     -restore_signal {pmu_core2_restore high}
 
 set_retention ret_core3 \
     -domain PD_CORE3 \
-    -retention_power_net VDD \
-    -retention_ground_net VSS \
+    -retention_supply_set SS_ALWAYS_ON \
     -save_signal    {pmu_core3_save    high} \
     -restore_signal {pmu_core3_restore high}
 
@@ -355,36 +394,36 @@ set_retention ret_core3 \
 # Section 7: 电源状态定义
 # ================================================================
 
-# --- 各供电网络的状态 ---
-add_power_state VDD -state {ON -supply_expr {power == `{FULL_ON, 0.9}}}
+# --- 各供电集合的电源状态 (基于 Supply Set) ---
+add_power_state SS_TOP -state {ON -supply_expr {power == `{FULL_ON, 0.9}}}
 
-add_power_state VDD_SW_CORE0 \
+add_power_state SS_CORE0 \
     -state {ON_HIGH -supply_expr {power == `{FULL_ON, 0.9}}} \
     -state {ON_LOW  -supply_expr {power == `{FULL_ON, 0.75}}} \
     -state {OFF     -supply_expr {power == `{OFF}}}
 
-add_power_state VDD_SW_CORE1 \
+add_power_state SS_CORE1 \
     -state {ON_HIGH -supply_expr {power == `{FULL_ON, 0.9}}} \
     -state {ON_LOW  -supply_expr {power == `{FULL_ON, 0.75}}} \
     -state {OFF     -supply_expr {power == `{OFF}}}
 
-add_power_state VDD_SW_CORE2 \
+add_power_state SS_CORE2 \
     -state {ON_HIGH -supply_expr {power == `{FULL_ON, 0.9}}} \
     -state {OFF     -supply_expr {power == `{OFF}}}
 
-add_power_state VDD_SW_CORE3 \
+add_power_state SS_CORE3 \
     -state {ON_HIGH -supply_expr {power == `{FULL_ON, 0.9}}} \
     -state {OFF     -supply_expr {power == `{OFF}}}
 
-add_power_state VDD_SW_GPU \
+add_power_state SS_GPU \
     -state {ON  -supply_expr {power == `{FULL_ON, 0.8}}} \
     -state {OFF -supply_expr {power == `{OFF}}}
 
-add_power_state VDD_SW_NPU \
+add_power_state SS_NPU \
     -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
     -state {OFF -supply_expr {power == `{OFF}}}
 
-add_power_state VDD_SW_PERI \
+add_power_state SS_PERI \
     -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
     -state {OFF -supply_expr {power == `{OFF}}}
 
@@ -567,12 +606,12 @@ VDD PAD ──→ Power Ring (M9) ──→ Power Strap (M7/M5)
 
 1. **架构规划** → 确定电源域划分和功耗模式
 2. **域定义** → `create_power_domain` 划分电压岛
-3. **供电网络** → `create_supply_port/net`、`connect_supply_net` 建立电源拓扑
+3. **供电网络** → `create_supply_port/net`、`connect_supply_net`、`create_supply_set` 建立电源拓扑
 4. **电源开关** → `create_power_switch` 实现 Power Gating
 5. **隔离策略** → `set_isolation` 处理域边界信号
 6. **电平转换** → `set_level_shifter` 处理跨电压域信号
 7. **状态保持** → `set_retention` 保存关键寄存器状态
-8. **电源状态** → `add_power_state` 定义合法的电源模式
+8. **电源状态** → `add_power_state` 定义合法的电源模式（基于 Supply Set）
 9. **仿真控制** → `set_simstate_behavior` 设置仿真行为
 10. **验证** → Power-Aware 仿真和 Formal Verification
 
