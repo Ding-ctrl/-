@@ -1,0 +1,88 @@
+# ================================================================
+# MobileStar NPU 子系统 — 低功耗设计信息
+# ================================================================
+# 独立子系统 YAML，由 soc_top.yaml 通过 includes 引用
+# scope: u_npu
+# ================================================================
+
+project:
+  name: "NPU_Subsys"
+  description: "MobileStar NPU Subsystem UPF"
+  upf_version: "2.0"
+  output_file: "npu_subsys.upf"
+
+# --------------------------------
+# 电源域
+# --------------------------------
+power_domains:
+  - name: PD_NPU
+    elements: null
+    is_top: true
+    primary_power: VDD_SW_NPU
+    primary_ground: VSS
+    description: "NPU 域（子系统顶层）"
+
+# --------------------------------
+# 可切换供电网络
+# --------------------------------
+switched_supply_nets:
+  - name: VDD_SW_NPU
+    domain: PD_NPU
+
+# --------------------------------
+# 供电集合
+# --------------------------------
+supply_sets:
+  - name: SS_NPU
+    power_net: VDD_SW_NPU
+    ground_net: VSS
+  - name: SS_ALWAYS_ON
+    power_net: VDD
+    ground_net: VSS
+
+# --------------------------------
+# 电源开关
+# --------------------------------
+power_switches:
+  - name: SW_NPU
+    domain: PD_NPU
+    input_supply: VDD
+    output_supply: VDD_SW_NPU
+    control_port: ctrl
+    control_net: pmu_npu_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_npu_pwr_ack
+
+# --------------------------------
+# 隔离策略
+# --------------------------------
+isolation_strategies:
+  - name: iso_npu
+    domain: PD_NPU
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+# --------------------------------
+# 电源状态
+# --------------------------------
+power_states:
+  - target: SS_NPU
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+# --------------------------------
+# 仿真行为
+# --------------------------------
+sim_states:
+  - domain: PD_NPU
+    behavior: CORRUPT
+
+# NPU 不做 Retention（模型权重存在 DDR 中）
+supply_ports: []
+level_shifters: []
+retention_strategies: []

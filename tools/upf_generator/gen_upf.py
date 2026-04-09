@@ -2,8 +2,12 @@
 """
 UPF 2.0 Generator — 从低功耗设计信息 YAML 文件生成标准 UPF 文件
 
+支持层次化设计：SoC 顶层 YAML 可通过 includes 引用子系统 YAML 文件，
+自动生成层次化 UPF（顶层 + 各子系统独立 UPF），或合并为单一平坦 UPF。
+
 用法:
-    python gen_upf.py <design_spec.yaml>           # 输出到 YAML 中指定的文件
+    python gen_upf.py <design_spec.yaml>           # 层次化: 输出顶层+子系统 UPF
+    python gen_upf.py <design_spec.yaml> --flat    # 平坦化: 合并为单个 UPF
     python gen_upf.py <design_spec.yaml> -o out.upf # 指定输出文件
     python gen_upf.py <design_spec.yaml> --stdout   # 输出到终端
 
@@ -16,6 +20,64 @@ import sys
 from datetime import datetime
 
 import yaml
+
+
+# ================================================================
+# Hierarchical YAML Loading
+# ================================================================
+
+def load_yaml(filepath):
+    """读取单个 YAML 文件"""
+    with open(filepath, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def resolve_includes(spec, base_dir):
+    """解析 YAML 中的 includes 列表，加载所有子系统 YAML。
+
+    返回:
+        subsystems: list of (scope, sub_spec, sub_filepath) 三元组
+    """
+    includes = spec.get("includes", [])
+    subsystems = []
+    for inc in includes:
+        sub_file = inc.get("file", "")
+        scope = inc.get("scope", "")
+        if not sub_file:
+            continue
+        # 支持相对路径和绝对路径
+        if not os.path.isabs(sub_file):
+            sub_path = os.path.join(base_dir, sub_file)
+        else:
+            sub_path = sub_file
+        sub_spec = load_yaml(sub_path)
+        subsystems.append((scope, sub_spec, sub_path))
+    return subsystems
+
+
+def merge_specs(top_spec, subsystems):
+    """将顶层 spec 和所有子系统 spec 合并为单一平坦 spec。
+
+    用于 --flat 模式，把所有子系统的低功耗设计信息合并到一个字典中。
+    """
+    merged = {}
+    # 保留顶层的 project 和 supply_ports
+    merged["project"] = dict(top_spec.get("project", {}))
+    merged["supply_ports"] = list(top_spec.get("supply_ports", []))
+
+    # 合并列表类型的字段
+    list_keys = [
+        "power_domains", "switched_supply_nets", "supply_sets",
+        "power_switches", "isolation_strategies", "level_shifters",
+        "retention_strategies", "power_states", "sim_states",
+    ]
+    for key in list_keys:
+        merged[key] = list(top_spec.get(key, []) or [])
+        for _scope, sub_spec, _path in subsystems:
+            sub_items = sub_spec.get(key, []) or []
+            merged[key].extend(sub_items)
+
+    return merged
 
 
 # ================================================================
@@ -353,6 +415,26 @@ def gen_sim_states(sim_states):
     return lines
 
 
+def gen_load_upf(subsystems, out_dir):
+    """生成层次化 load_upf 命令，引用各子系统 UPF 文件"""
+    if not subsystems:
+        return []
+    lines = [
+        "",
+        "# ================================================================",
+        "# 层次化 UPF: 加载子系统 UPF",
+        "# ================================================================",
+    ]
+    for scope, sub_spec, _sub_path in subsystems:
+        sub_proj = sub_spec.get("project", {})
+        sub_name = sub_proj.get("name", "unknown")
+        sub_upf = sub_proj.get("output_file", f"{sub_name}.upf")
+        desc = sub_proj.get("description", sub_name)
+        lines.append(f"\n# {desc}")
+        lines.append(f"load_upf {sub_upf} -scope {scope}")
+    return lines
+
+
 def gen_footer():
     """UPF 文件尾部"""
     return [
@@ -364,11 +446,18 @@ def gen_footer():
 
 
 # ================================================================
-# Main
+# Main Generation
 # ================================================================
 
-def generate_upf(spec):
-    """从设计规格字典生成完整 UPF 文件内容（字符串列表）"""
+def generate_upf(spec, subsystems=None, out_dir=""):
+    """从设计规格字典生成完整 UPF 文件内容（字符串列表）
+
+    参数:
+        spec:        设计规格字典（单个 YAML 的内容）
+        subsystems:  子系统列表 [(scope, sub_spec, sub_path), ...]
+                     如果提供，会生成 load_upf 命令（层次化模式）
+        out_dir:     输出目录，用于计算子系统 UPF 相对路径
+    """
     proj = spec.get("project", {})
     version = proj.get("upf_version", "2.0")
 
@@ -386,8 +475,32 @@ def generate_upf(spec):
     )
     all_lines.extend(gen_power_states(spec.get("power_states", [])))
     all_lines.extend(gen_sim_states(spec.get("sim_states", [])))
+
+    # 层次化模式：添加 load_upf 命令
+    if subsystems:
+        all_lines.extend(gen_load_upf(subsystems, out_dir))
+
     all_lines.extend(gen_footer())
     return all_lines
+
+
+def write_upf(upf_lines, out_path):
+    """将 UPF 行列表写入文件"""
+    upf_text = "\n".join(upf_lines) + "\n"
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(upf_text)
+    return out_path
+
+
+def determine_output_path(spec, base_dir, override=None):
+    """根据 spec 和参数确定输出路径"""
+    out_path = override or spec.get("project", {}).get(
+        "output_file", "output.upf"
+    )
+    if not os.path.isabs(out_path):
+        out_path = os.path.join(base_dir, out_path)
+    return out_path
 
 
 def main():
@@ -407,29 +520,96 @@ def main():
         action="store_true",
         help="输出到终端而不是文件"
     )
+    parser.add_argument(
+        "--flat",
+        action="store_true",
+        help="平坦模式: 合并所有子系统到单个 UPF (默认: 层次化模式)"
+    )
     args = parser.parse_args()
 
-    # 读取 YAML
-    with open(args.spec_file, "r", encoding="utf-8") as f:
-        spec = yaml.safe_load(f)
+    # 读取顶层 YAML
+    spec_path = os.path.abspath(args.spec_file)
+    base_dir = os.path.dirname(spec_path)
+    spec = load_yaml(spec_path)
 
-    # 生成 UPF
-    upf_lines = generate_upf(spec)
-    upf_text = "\n".join(upf_lines) + "\n"
+    # 解析 includes (子系统引用)
+    subsystems = resolve_includes(spec, base_dir)
 
-    if args.stdout:
-        sys.stdout.write(upf_text)
+    if args.flat and subsystems:
+        # === 平坦模式: 合并所有子系统为单一 UPF ===
+        merged = merge_specs(spec, subsystems)
+        upf_lines = generate_upf(merged)
+        upf_text = "\n".join(upf_lines) + "\n"
+
+        if args.stdout:
+            sys.stdout.write(upf_text)
+        else:
+            out_path = determine_output_path(spec, base_dir, args.output)
+            write_upf(upf_lines, out_path)
+            print(f"✅ UPF 文件已生成 (平坦模式): {out_path}")
+
+    elif subsystems:
+        # === 层次化模式: 顶层 UPF + 各子系统独立 UPF ===
+        out_path = determine_output_path(spec, base_dir, args.output)
+        out_dir = os.path.dirname(out_path)
+
+        if args.stdout:
+            # stdout 模式下依次输出所有文件内容
+            # 1. 先生成各子系统 UPF 内容
+            for scope, sub_spec, sub_path in subsystems:
+                sub_lines = generate_upf(sub_spec)
+                sub_proj = sub_spec.get("project", {})
+                sub_name = sub_proj.get("output_file", "sub.upf")
+                sys.stdout.write(
+                    f"\n{'='*60}\n"
+                    f"# Subsystem UPF: {sub_name} (scope: {scope})\n"
+                    f"{'='*60}\n"
+                )
+                sys.stdout.write("\n".join(sub_lines) + "\n")
+
+            # 2. 顶层 UPF (带 load_upf)
+            top_lines = generate_upf(spec, subsystems, out_dir)
+            sys.stdout.write(
+                f"\n{'='*60}\n"
+                f"# Top-Level UPF\n"
+                f"{'='*60}\n"
+            )
+            sys.stdout.write("\n".join(top_lines) + "\n")
+        else:
+            generated_files = []
+
+            # 1. 生成各子系统 UPF
+            for scope, sub_spec, sub_path in subsystems:
+                sub_lines = generate_upf(sub_spec)
+                sub_out = determine_output_path(
+                    sub_spec, os.path.dirname(sub_path)
+                )
+                # 如果子系统输出路径是相对的，基于顶层输出目录
+                if not os.path.isabs(sub_out):
+                    sub_out = os.path.join(out_dir, sub_out)
+                write_upf(sub_lines, sub_out)
+                generated_files.append(sub_out)
+
+            # 2. 生成顶层 UPF (含 load_upf 命令)
+            top_lines = generate_upf(spec, subsystems, out_dir)
+            write_upf(top_lines, out_path)
+            generated_files.insert(0, out_path)
+
+            print("✅ 层次化 UPF 文件已生成:")
+            for f in generated_files:
+                print(f"   📄 {f}")
+
     else:
-        out_path = args.output or spec.get("project", {}).get(
-            "output_file", "output.upf"
-        )
-        # 如果 output 是相对路径，基于 spec_file 目录
-        if not os.path.isabs(out_path):
-            base_dir = os.path.dirname(os.path.abspath(args.spec_file))
-            out_path = os.path.join(base_dir, out_path)
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(upf_text)
-        print(f"✅ UPF 文件已生成: {out_path}")
+        # === 无子系统: 单文件模式 (向后兼容) ===
+        upf_lines = generate_upf(spec)
+        upf_text = "\n".join(upf_lines) + "\n"
+
+        if args.stdout:
+            sys.stdout.write(upf_text)
+        else:
+            out_path = determine_output_path(spec, base_dir, args.output)
+            write_upf(upf_lines, out_path)
+            print(f"✅ UPF 文件已生成: {out_path}")
 
 
 if __name__ == "__main__":

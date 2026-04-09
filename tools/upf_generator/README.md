@@ -7,6 +7,8 @@
 1. **填写 YAML 设计信息文件** — 统计电源域、开关、隔离策略等全部低功耗设计信息
 2. **运行 Python 脚本** — 自动生成符合 IEEE 1801 (UPF 2.0) 标准的 UPF 文件
 
+**支持层次化全芯片设计** — SoC 顶层 YAML 可通过 `includes` 引用各子系统 YAML，自动生成层次化 UPF（`load_upf`）或合并为单一平坦 UPF。
+
 ## 文件结构
 
 ```
@@ -14,7 +16,13 @@ tools/upf_generator/
 ├── gen_upf.py                  # Python UPF 生成脚本
 ├── lp_design_spec.yaml         # 低功耗设计信息模板（空白，带注释说明）
 ├── examples/
-│   └── mobile_star.yaml        # 预填示例：Ch10 MobileStar SoC 完整设计
+│   ├── mobile_star.yaml        # 单文件示例：Ch10 MobileStar SoC 完整设计
+│   └── hierarchical/           # 层次化示例：全芯片跨 YAML 设计
+│       ├── soc_top.yaml        # SoC 顶层 (引用下面的子系统)
+│       ├── cpu_subsys.yaml     # CPU 子系统 (4 核 + 隔离 + 保持)
+│       ├── gpu_subsys.yaml     # GPU 子系统 (电平转换)
+│       ├── npu_subsys.yaml     # NPU 子系统
+│       └── peri_subsys.yaml    # 外设子系统
 └── README.md                   # 本文件
 ```
 
@@ -26,7 +34,7 @@ tools/upf_generator/
 pip install pyyaml
 ```
 
-### 2. 从示例生成 UPF
+### 2. 单文件模式（简单设计）
 
 ```bash
 # 输出到终端预览
@@ -39,7 +47,20 @@ python tools/upf_generator/gen_upf.py tools/upf_generator/examples/mobile_star.y
 python tools/upf_generator/gen_upf.py tools/upf_generator/examples/mobile_star.yaml -o my_design.upf
 ```
 
-### 3. 创建自己的设计
+### 3. 层次化模式（全芯片设计）
+
+```bash
+# 层次化: 生成顶层 UPF + 各子系统独立 UPF (使用 load_upf 引用)
+python tools/upf_generator/gen_upf.py tools/upf_generator/examples/hierarchical/soc_top.yaml
+
+# 平坦化: 合并所有子系统到单个 UPF 文件
+python tools/upf_generator/gen_upf.py tools/upf_generator/examples/hierarchical/soc_top.yaml --flat
+
+# 预览到终端
+python tools/upf_generator/gen_upf.py tools/upf_generator/examples/hierarchical/soc_top.yaml --stdout
+```
+
+### 4. 创建自己的设计
 
 ```bash
 # 复制模板
@@ -52,6 +73,63 @@ cp tools/upf_generator/lp_design_spec.yaml my_chip_spec.yaml
 python tools/upf_generator/gen_upf.py my_chip_spec.yaml
 ```
 
+## 层次化设计详解
+
+### 设计理念
+
+全芯片低功耗设计通常按子系统划分：
+
+```
+soc_top.yaml          ← SoC 顶层：供电端口、常开域、DDR 域
+├── cpu_subsys.yaml   ← CPU 子系统：4 个核心域、开关、隔离、保持
+├── gpu_subsys.yaml   ← GPU 子系统：开关、隔离、电平转换
+├── npu_subsys.yaml   ← NPU 子系统：开关、隔离
+└── peri_subsys.yaml  ← 外设子系统：开关、隔离
+```
+
+### YAML 中的 includes 配置
+
+在顶层 YAML 中通过 `includes` 字段引用各子系统：
+
+```yaml
+# soc_top.yaml
+includes:
+  - file: "cpu_subsys.yaml"      # 子系统 YAML 文件（相对或绝对路径）
+    scope: "u_cpu_subsys"        # RTL 中的层次路径
+  - file: "gpu_subsys.yaml"
+    scope: "u_gpu"
+```
+
+### 生成的 UPF 结构
+
+**层次化模式（默认）** — 每个子系统生成独立 UPF，顶层用 `load_upf` 引用：
+
+```tcl
+# mobile_star_top.upf (顶层)
+upf_version 2.0
+create_power_domain PD_TOP -include_scope
+...
+# 层次化 UPF: 加载子系统 UPF
+load_upf cpu_subsys.upf -scope u_cpu_subsys
+load_upf gpu_subsys.upf -scope u_gpu
+load_upf npu_subsys.upf -scope u_npu
+load_upf peri_subsys.upf -scope u_peripherals
+```
+
+```tcl
+# cpu_subsys.upf (子系统独立 UPF)
+upf_version 2.0
+create_power_domain PD_CPU -include_scope
+create_power_domain PD_CORE0 -elements {u_core0}
+...
+```
+
+**平坦模式 (`--flat`)** — 合并所有子系统到单个 UPF：
+
+```bash
+python gen_upf.py soc_top.yaml --flat
+```
+
 ## YAML 模板说明
 
 模板以**最复杂的低功耗设计为基础**（多核 SoC、多电源域、多电压岛），涵盖 UPF 2.0 所有主要功能。简单设计只需填写需要的部分：
@@ -59,7 +137,8 @@ python tools/upf_generator/gen_upf.py my_chip_spec.yaml
 | YAML 段落 | 对应 UPF 功能 | 简单设计是否必填 |
 |-----------|-------------|:---:|
 | `project` | 文件头、版本 | ✅ |
-| `supply_ports` | 芯片电源 PAD | ✅ |
+| `includes` | 层次化子系统引用 | 全芯片设计时填 |
+| `supply_ports` | 芯片电源 PAD | ✅ (顶层) |
 | `power_domains` | 电源域定义 | ✅ |
 | `switched_supply_nets` | 可切换供电网络 | 有开关域时填 |
 | `supply_sets` | UPF 2.0 供电集合 | UPF 2.0 时填 |
@@ -120,6 +199,7 @@ isolation_strategies:
     applies_to: outputs
 
 # 不需要的段落留空即可
+includes: []
 supply_sets: []
 level_shifters: []
 retention_strategies: []
@@ -144,10 +224,13 @@ sim_states: []
 | `set_retention` | 状态保持 |
 | `add_power_state` | 电源状态 |
 | `set_simstate_behavior` | 仿真行为 |
+| `load_upf` | 层次化加载子系统 UPF |
 
 ## 设计理念
 
 - **以最复杂设计为模板** — 模板覆盖完整的多核 SoC 低功耗场景
 - **简单设计按需填写** — 不需要的功能留空列表 `[]`，生成的 UPF 会自动跳过
-- **UPF 1.0 / 2.0 兼容** — 设置 `upf_version: "1.0"` 时会自动使用 `isolation_power_net` 而非 `isolation_supply_set`
+- **层次化全芯片支持** — `includes` 引用子系统 YAML，生成 `load_upf` 层次化 UPF
+- **平坦化合并** — `--flat` 选项将所有子系统合并为单一 UPF，便于调试
+- **UPF 1.0 / 2.0 兼容** — 设置 `upf_version: "1.0"` 时自动使用 UPF 1.0 语法
 - **可审查** — YAML 文件本身就是低功耗设计的规格文档，便于团队评审

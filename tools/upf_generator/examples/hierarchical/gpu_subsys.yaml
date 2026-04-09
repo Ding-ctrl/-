@@ -1,0 +1,101 @@
+# ================================================================
+# MobileStar GPU 子系统 — 低功耗设计信息
+# ================================================================
+# 独立子系统 YAML，由 soc_top.yaml 通过 includes 引用
+# scope: u_gpu
+# ================================================================
+
+project:
+  name: "GPU_Subsys"
+  description: "MobileStar GPU Subsystem UPF"
+  upf_version: "2.0"
+  output_file: "gpu_subsys.upf"
+
+# --------------------------------
+# 电源域
+# --------------------------------
+power_domains:
+  - name: PD_GPU
+    elements: null
+    is_top: true
+    primary_power: VDD_SW_GPU
+    primary_ground: VSS
+    description: "GPU 域（子系统顶层）"
+
+# --------------------------------
+# 可切换供电网络
+# --------------------------------
+switched_supply_nets:
+  - name: VDD_SW_GPU
+    domain: PD_GPU
+
+# --------------------------------
+# 供电集合
+# --------------------------------
+supply_sets:
+  - name: SS_GPU
+    power_net: VDD_SW_GPU
+    ground_net: VSS
+  - name: SS_ALWAYS_ON
+    power_net: VDD
+    ground_net: VSS
+
+# --------------------------------
+# 电源开关
+# --------------------------------
+power_switches:
+  - name: SW_GPU
+    domain: PD_GPU
+    input_supply: VDD
+    output_supply: VDD_SW_GPU
+    control_port: ctrl
+    control_net: pmu_gpu_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_gpu_pwr_ack
+
+# --------------------------------
+# 隔离策略
+# --------------------------------
+isolation_strategies:
+  - name: iso_gpu
+    domain: PD_GPU
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+# --------------------------------
+# 电平转换 (GPU 0.8V ↔ TOP 0.9V)
+# --------------------------------
+level_shifters:
+  - name: ls_gpu_out
+    domain: PD_GPU
+    applies_to: outputs
+    rule: low_to_high
+
+  - name: ls_gpu_in
+    domain: PD_GPU
+    applies_to: inputs
+    rule: high_to_low
+
+# --------------------------------
+# 电源状态
+# --------------------------------
+power_states:
+  - target: SS_GPU
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.8"
+      - name: "OFF"
+        expr: "OFF"
+
+# --------------------------------
+# 仿真行为
+# --------------------------------
+sim_states:
+  - domain: PD_GPU
+    behavior: CORRUPT
+
+# GPU 不做 Retention（关断后完全重新初始化）
+supply_ports: []
+retention_strategies: []

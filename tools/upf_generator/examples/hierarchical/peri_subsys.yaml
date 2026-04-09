@@ -1,0 +1,88 @@
+# ================================================================
+# MobileStar 外设子系统 — 低功耗设计信息
+# ================================================================
+# 独立子系统 YAML，由 soc_top.yaml 通过 includes 引用
+# scope: u_peripherals
+# ================================================================
+
+project:
+  name: "PERI_Subsys"
+  description: "MobileStar Peripherals Subsystem UPF"
+  upf_version: "2.0"
+  output_file: "peri_subsys.upf"
+
+# --------------------------------
+# 电源域
+# --------------------------------
+power_domains:
+  - name: PD_PERI
+    elements: null
+    is_top: true
+    primary_power: VDD_SW_PERI
+    primary_ground: VSS
+    description: "外设域（子系统顶层）— UART/SPI/I2C"
+
+# --------------------------------
+# 可切换供电网络
+# --------------------------------
+switched_supply_nets:
+  - name: VDD_SW_PERI
+    domain: PD_PERI
+
+# --------------------------------
+# 供电集合
+# --------------------------------
+supply_sets:
+  - name: SS_PERI
+    power_net: VDD_SW_PERI
+    ground_net: VSS
+  - name: SS_ALWAYS_ON
+    power_net: VDD
+    ground_net: VSS
+
+# --------------------------------
+# 电源开关
+# --------------------------------
+power_switches:
+  - name: SW_PERI
+    domain: PD_PERI
+    input_supply: VDD
+    output_supply: VDD_SW_PERI
+    control_port: ctrl
+    control_net: pmu_peri_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_peri_pwr_ack
+
+# --------------------------------
+# 隔离策略
+# --------------------------------
+isolation_strategies:
+  - name: iso_peri
+    domain: PD_PERI
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+# --------------------------------
+# 电源状态
+# --------------------------------
+power_states:
+  - target: SS_PERI
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+# --------------------------------
+# 仿真行为
+# --------------------------------
+sim_states:
+  - domain: PD_PERI
+    behavior: CORRUPT
+
+# 外设不需要的段落
+supply_ports: []
+level_shifters: []
+retention_strategies: []

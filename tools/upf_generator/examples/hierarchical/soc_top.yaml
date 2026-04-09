@@ -1,0 +1,113 @@
+# ================================================================
+# MobileStar SoC — 层次化顶层低功耗设计信息
+# ================================================================
+# 演示层次化 YAML 设计：
+#   soc_top.yaml (本文件) 引用各子系统 YAML
+#   → 自动生成顶层 UPF + 各子系统独立 UPF
+#
+# 用法:
+#   python gen_upf.py examples/hierarchical/soc_top.yaml          # 层次化
+#   python gen_upf.py examples/hierarchical/soc_top.yaml --flat   # 合并
+# ================================================================
+
+# --------------------------------
+# 基本信息
+# --------------------------------
+project:
+  name: "MobileStar"
+  description: "MobileStar SoC Top-Level UPF (Hierarchical)"
+  upf_version: "2.0"
+  output_file: "mobile_star_top.upf"
+
+# --------------------------------
+# 子系统引用 — 各子系统有独立的 YAML 和 UPF
+# --------------------------------
+includes:
+  - file: "cpu_subsys.yaml"
+    scope: "u_cpu_subsys"
+  - file: "gpu_subsys.yaml"
+    scope: "u_gpu"
+  - file: "npu_subsys.yaml"
+    scope: "u_npu"
+  - file: "peri_subsys.yaml"
+    scope: "u_peripherals"
+
+# ================================
+# 以下为顶层（SoC 级）低功耗设计信息
+# 只定义顶层自身的域、端口、全局供电等
+# 各子系统的域、开关、隔离等在子系统 YAML 中定义
+# ================================
+
+# --------------------------------
+# 顶层供电端口
+# --------------------------------
+supply_ports:
+  - name: VDD
+    direction: in
+    description: "主电源 0.9V"
+  - name: VSS
+    direction: in
+    description: "主地线"
+  - name: VDDQ
+    direction: in
+    description: "DDR I/O 电源 1.1V"
+
+# --------------------------------
+# 顶层电源域 (常开域 + DDR 域)
+# --------------------------------
+power_domains:
+  - name: PD_TOP
+    elements: null
+    is_top: true
+    primary_power: VDD
+    primary_ground: VSS
+    description: "顶层域（常开域）— PMU, GIC, Timer, RTC, WakeUp Logic"
+
+  - name: PD_DDR
+    elements: "u_ddr_ctrl"
+    is_top: false
+    primary_power: VDD
+    primary_ground: VSS
+    description: "DDR 控制器域（通常不关断，但支持低功耗模式）"
+
+# --------------------------------
+# 顶层供电集合
+# --------------------------------
+supply_sets:
+  - name: SS_TOP
+    power_net: VDD
+    ground_net: VSS
+  - name: SS_DDR
+    power_net: VDD
+    ground_net: VSS
+  - name: SS_DDR_IO
+    power_net: VDDQ
+    ground_net: VSS
+  - name: SS_ALWAYS_ON
+    power_net: VDD
+    ground_net: VSS
+
+# --------------------------------
+# 顶层电源状态
+# --------------------------------
+power_states:
+  - target: SS_TOP
+    states:
+      - name: "ON"
+        expr: "FULL_ON, 0.9"
+
+# --------------------------------
+# 顶层仿真行为
+# --------------------------------
+sim_states:
+  - domain: PD_TOP
+    behavior: NORMAL
+  - domain: PD_DDR
+    behavior: NORMAL
+
+# 顶层不需要的段落留空
+switched_supply_nets: []
+power_switches: []
+isolation_strategies: []
+level_shifters: []
+retention_strategies: []

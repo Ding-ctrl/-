@@ -1,0 +1,255 @@
+# ================================================================
+# MobileStar CPU 子系统 — 低功耗设计信息
+# ================================================================
+# 独立子系统 YAML，由 soc_top.yaml 通过 includes 引用
+# scope: u_cpu_subsys
+# ================================================================
+
+project:
+  name: "CPU_Subsys"
+  description: "MobileStar CPU Subsystem UPF"
+  upf_version: "2.0"
+  output_file: "cpu_subsys.upf"
+
+# --------------------------------
+# 电源域
+# --------------------------------
+power_domains:
+  - name: PD_CPU
+    elements: null
+    is_top: true
+    primary_power: VDD
+    primary_ground: VSS
+    description: "CPU 子系统域（子系统顶层）"
+
+  - name: PD_CORE0
+    elements: "u_core0"
+    is_top: false
+    primary_power: VDD_SW_CORE0
+    primary_ground: VSS
+    description: "A55 小核 Core0"
+
+  - name: PD_CORE1
+    elements: "u_core1"
+    is_top: false
+    primary_power: VDD_SW_CORE1
+    primary_ground: VSS
+    description: "A55 小核 Core1"
+
+  - name: PD_CORE2
+    elements: "u_core2"
+    is_top: false
+    primary_power: VDD_SW_CORE2
+    primary_ground: VSS
+    description: "A76 大核 Core2"
+
+  - name: PD_CORE3
+    elements: "u_core3"
+    is_top: false
+    primary_power: VDD_SW_CORE3
+    primary_ground: VSS
+    description: "A76 大核 Core3"
+
+# --------------------------------
+# 可切换供电网络
+# --------------------------------
+switched_supply_nets:
+  - name: VDD_SW_CORE0
+    domain: PD_CORE0
+  - name: VDD_SW_CORE1
+    domain: PD_CORE1
+  - name: VDD_SW_CORE2
+    domain: PD_CORE2
+  - name: VDD_SW_CORE3
+    domain: PD_CORE3
+
+# --------------------------------
+# 供电集合
+# --------------------------------
+supply_sets:
+  - name: SS_CPU
+    power_net: VDD
+    ground_net: VSS
+  - name: SS_CORE0
+    power_net: VDD_SW_CORE0
+    ground_net: VSS
+  - name: SS_CORE1
+    power_net: VDD_SW_CORE1
+    ground_net: VSS
+  - name: SS_CORE2
+    power_net: VDD_SW_CORE2
+    ground_net: VSS
+  - name: SS_CORE3
+    power_net: VDD_SW_CORE3
+    ground_net: VSS
+  - name: SS_ALWAYS_ON
+    power_net: VDD
+    ground_net: VSS
+
+# --------------------------------
+# 电源开关
+# --------------------------------
+power_switches:
+  - name: SW_CORE0
+    domain: PD_CORE0
+    input_supply: VDD
+    output_supply: VDD_SW_CORE0
+    control_port: ctrl
+    control_net: pmu_core0_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core0_pwr_ack
+
+  - name: SW_CORE1
+    domain: PD_CORE1
+    input_supply: VDD
+    output_supply: VDD_SW_CORE1
+    control_port: ctrl
+    control_net: pmu_core1_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core1_pwr_ack
+
+  - name: SW_CORE2
+    domain: PD_CORE2
+    input_supply: VDD
+    output_supply: VDD_SW_CORE2
+    control_port: ctrl
+    control_net: pmu_core2_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core2_pwr_ack
+
+  - name: SW_CORE3
+    domain: PD_CORE3
+    input_supply: VDD
+    output_supply: VDD_SW_CORE3
+    control_port: ctrl
+    control_net: pmu_core3_pwr_en
+    on_state_name: "on"
+    ack_port: ack
+    ack_net: pmu_core3_pwr_ack
+
+# --------------------------------
+# 隔离策略
+# --------------------------------
+isolation_strategies:
+  - name: iso_core0
+    domain: PD_CORE0
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core1
+    domain: PD_CORE1
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core2
+    domain: PD_CORE2
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core3
+    domain: PD_CORE3
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: 0
+    applies_to: outputs
+
+  - name: iso_core0_axi
+    domain: PD_CORE0
+    elements: "u_core0/axi_*"
+    isolation_supply_set: SS_ALWAYS_ON
+    clamp_value: latch
+    applies_to: outputs
+
+# --------------------------------
+# 状态保持
+# --------------------------------
+retention_strategies:
+  - name: ret_core0
+    domain: PD_CORE0
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core0_save
+    save_level: high
+    restore_signal: pmu_core0_restore
+    restore_level: high
+
+  - name: ret_core1
+    domain: PD_CORE1
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core1_save
+    save_level: high
+    restore_signal: pmu_core1_restore
+    restore_level: high
+
+  - name: ret_core2
+    domain: PD_CORE2
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core2_save
+    save_level: high
+    restore_signal: pmu_core2_restore
+    restore_level: high
+
+  - name: ret_core3
+    domain: PD_CORE3
+    retention_supply_set: SS_ALWAYS_ON
+    save_signal: pmu_core3_save
+    save_level: high
+    restore_signal: pmu_core3_restore
+    restore_level: high
+
+# --------------------------------
+# 电源状态
+# --------------------------------
+power_states:
+  - target: SS_CORE0
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: ON_LOW
+        expr: "FULL_ON, 0.75"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_CORE1
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: ON_LOW
+        expr: "FULL_ON, 0.75"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_CORE2
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+  - target: SS_CORE3
+    states:
+      - name: ON_HIGH
+        expr: "FULL_ON, 0.9"
+      - name: "OFF"
+        expr: "OFF"
+
+# --------------------------------
+# 仿真行为
+# --------------------------------
+sim_states:
+  - domain: PD_CORE0
+    behavior: CORRUPT
+  - domain: PD_CORE1
+    behavior: CORRUPT
+  - domain: PD_CORE2
+    behavior: CORRUPT
+  - domain: PD_CORE3
+    behavior: CORRUPT
+
+# 不需要的段落
+supply_ports: []
+level_shifters: []
