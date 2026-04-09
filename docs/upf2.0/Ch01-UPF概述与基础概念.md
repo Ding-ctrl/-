@@ -300,16 +300,16 @@ create_power_domain PD_CPU -elements {u_cpu}
 create_power_domain PD_GPU -elements {u_gpu}
 
 # ----- 3. 定义供电网络 -----
-create_supply_net VDD -domain PD_TOP
-create_supply_net VSS -domain PD_TOP
-create_supply_net VDD_CPU -domain PD_CPU
-create_supply_net VDD_GPU -domain PD_GPU
+create_supply_net VDD -domain PD_TOP       ;# 全局常开电源
+create_supply_net VSS -domain PD_TOP       ;# 全局地线
+create_supply_net VDD_CPU -domain PD_CPU   ;# CPU 虚拟电源（由 SW_CPU 开关输出）
+create_supply_net VDD_GPU -domain PD_GPU   ;# GPU 虚拟电源（由 SW_GPU 开关输出）
 
-# ----- 4. 创建供电端口 -----
-create_supply_port VDD -direction in
-create_supply_port VSS -direction in
+# ----- 4. 创建供电端口（芯片 PAD 级别）-----
+create_supply_port VDD -direction in      ;# 主电源 PAD
+create_supply_port VSS -direction in      ;# 主地线 PAD
 
-# ----- 5. 连接供电网络 -----
+# ----- 5. 连接供电网络到端口 -----
 connect_supply_net VDD -ports {VDD}
 connect_supply_net VSS -ports {VSS}
 
@@ -335,13 +335,28 @@ set_domain_supply_net PD_CPU \
     -primary_power_net VDD_CPU \
     -primary_ground_net VSS
 
+set_domain_supply_net PD_GPU \
+    -primary_power_net VDD_GPU \
+    -primary_ground_net VSS
+
 # ----- 8. 定义电源开关 -----
+# CPU 域电源开关：VDD 经过 SW_CPU 切换后输出 VDD_CPU
 create_power_switch SW_CPU \
     -domain PD_CPU \
     -input_supply_port {vin VDD} \
     -output_supply_port {vout VDD_CPU} \
     -control_port {ctrl cpu_pwr_en} \
-    -on_state {on_state vin {ctrl}}
+    -on_state {cpu_on vin {ctrl}} \
+    -ack_port {ack cpu_pwr_ack {cpu_on}}
+
+# GPU 域电源开关：VDD 经过 SW_GPU 切换后输出 VDD_GPU
+create_power_switch SW_GPU \
+    -domain PD_GPU \
+    -input_supply_port {vin VDD} \
+    -output_supply_port {vout VDD_GPU} \
+    -control_port {ctrl gpu_pwr_en} \
+    -on_state {gpu_on vin {ctrl}} \
+    -ack_port {ack gpu_pwr_ack {gpu_on}}
 
 # ----- 9. 设置隔离策略 -----
 set_isolation iso_cpu \
@@ -351,9 +366,21 @@ set_isolation iso_cpu \
     -clamp_value 0 \
     -applies_to outputs
 
+set_isolation iso_gpu \
+    -domain PD_GPU \
+    -isolation_power_net VDD \
+    -isolation_ground_net VSS \
+    -clamp_value 0 \
+    -applies_to outputs
+
 # ----- 10. 设置电平转换策略 -----
-set_level_shifter ls_cpu_to_gpu \
+set_level_shifter ls_cpu_to_top \
     -domain PD_CPU \
+    -applies_to outputs \
+    -rule both
+
+set_level_shifter ls_gpu_to_top \
+    -domain PD_GPU \
     -applies_to outputs \
     -rule both
 
@@ -365,9 +392,18 @@ set_retention ret_cpu \
     -save_signal {save_cpu high} \
     -restore_signal {restore_cpu high}
 
+set_retention ret_gpu \
+    -domain PD_GPU \
+    -retention_power_net VDD \
+    -retention_ground_net VSS \
+    -save_signal {save_gpu high} \
+    -restore_signal {restore_gpu high}
+
 # ----- 12. 定义电源状态 -----
 add_power_state PD_TOP.primary -state {FULL_ON -supply_expr {power == `{FULL_ON, 0.9}}}
-add_power_state PD_CPU.primary -state {ON -supply_expr {power == `{FULL_ON, 0.9}}} \
+add_power_state PD_CPU.primary -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
+                               -state {OFF -supply_expr {power == `{OFF}}}
+add_power_state PD_GPU.primary -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
                                -state {OFF -supply_expr {power == `{OFF}}}
 ```
 
