@@ -74,9 +74,10 @@ upf/
 │  Step 4   供电网络 + 供电连接 (create_supply_net / connect_supply_net)│
 │  Step 5   供电集合 (create_supply_set)            ← UPF 2.0          │
 │  Step 6   电源开关 (create_power_switch)                              │
-│  Step 7   隔离策略 (set_isolation)                                    │
+│  Step 7   隔离策略 (set_isolation + set_isolation_control)            │
+│           + 隔离单元映射 (map_isolation_cell)                         │
 │  Step 8   电平转换 (set_level_shifter)                                │
-│  Step 9   状态保持 (set_retention)                                    │
+│  Step 9   状态保持 (set_retention + map_retention_cell)               │
 │  Step 10  电源状态 + 仿真行为 (add_power_state / set_simstate)        │
 │                                                                      │
 │  Phase B: 顶层 UPF（SoC 集成团队编写）                                 │
@@ -324,9 +325,9 @@ create_power_switch SW_CORE3 \
 
 ---
 
-## Step 7：隔离策略 — `set_isolation`
+## Step 7：隔离策略 — `set_isolation` + `set_isolation_control` + `map_isolation_cell`
 
-### UPF 命令
+### 7a. 隔离策略定义 — `set_isolation`
 
 ```tcl
 # 各核心输出隔离
@@ -363,13 +364,110 @@ set_isolation iso_core0_axi \
     -applies_to outputs
 ```
 
+### 7b. 隔离控制信号 — `set_isolation_control` ⭐
+
+> **`set_isolation` 只声明了"需要隔离"和"钳位值"，但没有指定是哪个信号控制隔离单元的使能。`set_isolation_control` 补充了这一关键信息——告诉 EDA 工具用哪个信号、什么极性来控制隔离单元。**
+
+#### 命令语法
+
+```tcl
+set_isolation_control isolation_name
+    -domain domain_name
+    -isolation_signal signal_name
+    -isolation_sense {high | low}
+    [-location {self | parent | sibling | fanout | ...}]
+```
+
+#### 参数说明
+
+| 参数 | 含义 | 说明 |
+|------|------|------|
+| `isolation_name` | 关联的隔离策略名称 | 必须与 `set_isolation` 中定义的名称一致 |
+| `-domain` | 应用的电源域 | 必须与 `set_isolation` 中的 `-domain` 一致 |
+| `-isolation_signal` | 控制隔离使能的信号 | 该信号**必须属于常开域**（否则域关断后控制信号也丢失） |
+| `-isolation_sense high` | 高有效隔离 | 信号为 1 时正常通过，为 0 时钳位（AND 型隔离单元） |
+| `-isolation_sense low` | 低有效隔离 | 信号为 0 时正常通过，为 1 时钳位（OR 型隔离单元） |
+| `-location` | 隔离单元放置位置 | `self`=源域内, `parent`=父域/接收域侧（推荐） |
+
+#### UPF 命令
+
+```tcl
+# 每个 set_isolation 必须配对一个 set_isolation_control
+set_isolation_control iso_core0 \
+    -domain PD_CORE0 \
+    -isolation_signal pmu_core0_iso_en \
+    -isolation_sense high \
+    -location parent
+
+set_isolation_control iso_core1 \
+    -domain PD_CORE1 \
+    -isolation_signal pmu_core1_iso_en \
+    -isolation_sense high \
+    -location parent
+
+set_isolation_control iso_core2 \
+    -domain PD_CORE2 \
+    -isolation_signal pmu_core2_iso_en \
+    -isolation_sense high \
+    -location parent
+
+set_isolation_control iso_core3 \
+    -domain PD_CORE3 \
+    -isolation_signal pmu_core3_iso_en \
+    -isolation_sense high \
+    -location parent
+
+# AXI 总线隔离也需要配对控制信号（复用同一信号）
+set_isolation_control iso_core0_axi \
+    -domain PD_CORE0 \
+    -isolation_signal pmu_core0_iso_en \
+    -isolation_sense high \
+    -location parent
+```
+
+#### 控制信号时序要求
+
+```
+═══ 下电序列 ═══                    ═══ 上电序列 ═══
+
+  pmu_coreX_iso_en                    power_sw_en
+      ┌────────────                       ┌────────────
+  ────┘  ① 先使能隔离               ─────┘  ① 先上电
+
+  power_sw_en                         power_ack
+      ────────┐                           ┌────────────
+              └────                  ─────┘  ② 电源稳定
+        ② 再关断电源
+                                      pmu_coreX_iso_en
+                                          ────────┐
+                                                  └────
+                                            ③ 最后释放隔离
+```
+
+> ⚠️ **关键约束**：`pmu_coreX_iso_en` 信号必须由**常开域（PD_CPU）内的 PMU 控制器**驱动。如果 iso_en 信号属于可关断域，则域关断后 iso_en 本身也丢失，隔离单元行为不确定！
+
+### 7c. 隔离单元映射 — `map_isolation_cell`（可选）
+
+> 指定隔离策略使用哪个库单元实现。不指定时 EDA 工具会自动选择。
+
+```tcl
+# 指定具体的隔离库单元（可选，工具默认会自动选择）
+map_isolation_cell iso_core0 \
+    -domain PD_CORE0 \
+    -lib_cells {ISOCLAMP0_D4}           ;# AND 型, clamp-to-0
+
+map_isolation_cell iso_core0_axi \
+    -domain PD_CORE0 \
+    -lib_cells {ISOLATCH_D4}            ;# Latch 型, clamp-to-last
+```
+
 ### 注意事项
 
 | 维度 | 注意事项 |
 |------|---------|
-| **RTL 设计** | ① 隔离使能信号必须在 RTL 中存在，由常开域的控制器驱动<br>② `-clamp_value 0`：适用于大多数数据信号<br>③ `-clamp_value latch`：适用于 AXI/AHB 总线（避免协议违规）<br>④ 仔细审查每个跨域输出信号的安全钳位值 |
-| **物理实现** | ① 隔离单元由**常开电源**供电（`SS_ALWAYS_ON`）<br>② 每个跨域输出信号需要一个隔离单元<br>③ 隔离单元增加信号路径延迟（通常 0.1-0.3ns） |
-| **常见错误** | ① 所有信号都用 `clamp_value 0` 没有考虑总线协议<br>② 隔离单元的供电写成了可关断域的电源 |
+| **RTL 设计** | ① 隔离使能信号（`pmu_coreX_iso_en`）必须在 RTL 中存在，由常开域的 PMU 控制器驱动<br>② `set_isolation_control` 中的 `-isolation_signal` 必须与 RTL 端口名完全匹配<br>③ `-clamp_value 0`：适用于大多数数据信号<br>④ `-clamp_value latch`：适用于 AXI/AHB 总线（避免协议违规）<br>⑤ 仔细审查每个跨域输出信号的安全钳位值 |
+| **物理实现** | ① 隔离单元由**常开电源**供电（`SS_ALWAYS_ON`）<br>② 每个跨域输出信号需要一个隔离单元<br>③ 隔离单元增加信号路径延迟（通常 0.1-0.3ns）<br>④ `-location parent` 将隔离单元放在接收域侧（常开供电，推荐）<br>⑤ `map_isolation_cell` 可用于约束工具选用特定驱动强度的隔离单元 |
+| **常见错误** | ① **只写了 `set_isolation` 没写 `set_isolation_control`** → 工具不知道用哪个信号控制<br>② iso_en 信号属于可关断域 → 域关断后隔离控制信号丢失<br>③ 所有信号都用 `clamp_value 0` 没有考虑总线协议<br>④ 隔离单元的供电写成了可关断域的电源<br>⑤ `-isolation_sense` 极性与 RTL 中的信号极性不匹配 |
 
 ### 钳位值选择指南
 
@@ -420,9 +518,11 @@ set_level_shifter ls_core2_out \
 
 ---
 
-## Step 9：状态保持 — `set_retention`
+## Step 9：状态保持 — `set_retention` + `map_retention_cell`
 
-### UPF 命令
+### 9a. 状态保持策略定义 — `set_retention`
+
+> **注意**：`set_retention` 中的 `-save_signal` 和 `-restore_signal` 已经包含了控制信号定义（不同于 `set_isolation` 需要单独的 `set_isolation_control`）。
 
 ```tcl
 # CPU 各核心寄存器保持
@@ -451,13 +551,86 @@ set_retention ret_core3 \
     -restore_signal {pmu_core3_restore high}
 ```
 
+#### Save/Restore 控制信号说明
+
+| 参数 | 信号名 | 含义 | 时序要求 |
+|------|--------|------|---------|
+| `-save_signal {pmu_core0_save high}` | `pmu_core0_save` | 高有效：脉冲时将 FF 数据保存到 Shadow Latch | **必须在断电前**触发，且 FF 数据此时仍有效 |
+| `-restore_signal {pmu_core0_restore high}` | `pmu_core0_restore` | 高有效：脉冲时将 Shadow Latch 数据恢复到 FF | **必须在上电后、释放隔离前**触发 |
+
+#### 控制信号时序关系
+
+```
+═══ 完整的下电 → 上电序列 ═══
+
+  clk_enable    ──┐
+                  └──────────────────────────────────────── (1) 先停时钟
+
+  save          ────────┌───┐
+                        │   └────────────────────────────── (2) 触发保存
+                        ↑ FF 数据 → Shadow Latch
+
+  iso_en        ─────────────┌───────────────────────────── (3) 使能隔离
+
+  power_sw      ──────────────────┐
+                                  └──────────────────────── (4) 最后断电
+
+  ... (域处于关断状态，Shadow Latch 由常开电源保持) ...
+
+  power_sw      ────────────────────────┌────────────────── (5) 先上电
+
+  power_ack     ─────────────────────────────┌───────────── (6) 电源稳定
+
+  restore       ──────────────────────────────────┌───┐
+                                                  │   └──── (7) 触发恢复
+                                                  ↑ Shadow Latch → FF
+
+  iso_en        ────────────────────────────────────────┐
+                                                        └── (8) 释放隔离
+
+  clk_enable    ─────────────────────────────────────────┌── (9) 恢复时钟
+```
+
+> ⚠️ **关键约束**：`save` / `restore` / `iso_en` 信号都必须由**常开域的 PMU 控制器**驱动，不能属于可关断域。
+
+### 9b. Retention 单元映射 — `map_retention_cell`（可选）
+
+> 指定 Retention 策略使用哪个库单元实现。不指定时 EDA 工具会自动选择。
+
+```tcl
+# 指定具体的 Retention FF 库单元（可选，工具默认会自动选择）
+map_retention_cell ret_core0 \
+    -domain PD_CORE0 \
+    -lib_cells {SDFFRQN_RET_D1}        ;# Balloon Latch 型 Retention FF
+
+map_retention_cell ret_core1 \
+    -domain PD_CORE1 \
+    -lib_cells {SDFFRQN_RET_D1}
+
+map_retention_cell ret_core2 \
+    -domain PD_CORE2 \
+    -lib_cells {SDFFRQN_RET_D1}
+
+map_retention_cell ret_core3 \
+    -domain PD_CORE3 \
+    -lib_cells {SDFFRQN_RET_D1}
+```
+
+#### `map_retention_cell` 参数说明
+
+| 参数 | 含义 |
+|------|------|
+| `ret_coreN` | 关联的 Retention 策略名称（必须与 `set_retention` 中的名称一致） |
+| `-domain` | 应用的电源域 |
+| `-lib_cells` | 指定使用的 Retention FF 库单元名称 |
+
 ### 注意事项
 
 | 维度 | 注意事项 |
 |------|---------|
-| **RTL 设计** | ① save/restore 信号必须在 RTL 中存在，由常开域的控制器驱动<br>② 不是所有域都需要 Retention——GPU（显存重载）、NPU（权重在 DDR）可以不做<br>③ 选择性 Retention：只保持关键寄存器（通用寄存器、状态机、配置寄存器） |
-| **物理实现** | ① Retention FF 比标准 FF **面积大 30-50%**<br>② Retention FF 需要额外的常开电源引脚<br>③ **选择性 Retention** 可显著减少面积和漏电开销 |
-| **常见错误** | ① save/restore 信号 edge 极性写反<br>② Retention 供电来源写成了可关断域的电源<br>③ 对所有寄存器都做 Retention 导致面积爆炸 |
+| **RTL 设计** | ① save/restore 信号必须在 RTL 中存在，由常开域的 PMU 控制器驱动<br>② 不是所有域都需要 Retention——GPU（显存重载）、NPU（权重在 DDR）可以不做<br>③ 选择性 Retention：只保持关键寄存器（通用寄存器、状态机、配置寄存器）<br>④ save 必须在断电前、restore 必须在上电后隔离释放前触发 |
+| **物理实现** | ① Retention FF 比标准 FF **面积大 30-50%**<br>② Retention FF 需要额外的常开电源引脚<br>③ **选择性 Retention** 可显著减少面积和漏电开销<br>④ `map_retention_cell` 可用于约束工具选用特定面积/延迟的 Retention FF |
+| **常见错误** | ① save/restore 信号 edge 极性写反（`high` vs `low`）<br>② Retention 供电来源写成了可关断域的电源<br>③ 对所有寄存器都做 Retention 导致面积爆炸<br>④ **save/restore 信号属于可关断域**——域关断后信号丢失<br>⑤ restore 在隔离释放之后才触发——此时 FF 输出已经驱动下游逻辑，可能产生毛刺 |
 
 ---
 
@@ -776,7 +949,7 @@ create_power_switch SW_CORE3 -domain PD_CORE3 \
     -control_port {ctrl pmu_core3_pwr_en} -on_state {on vin {ctrl}} \
     -ack_port {ack pmu_core3_pwr_ack {on}}
 
-# ---- Step 7: 隔离 ----
+# ---- Step 7: 隔离 + 隔离控制 ----
 set_isolation iso_core0 -domain PD_CORE0 -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 -applies_to outputs
 set_isolation iso_core1 -domain PD_CORE1 -isolation_supply_set SS_ALWAYS_ON \
@@ -786,7 +959,17 @@ set_isolation iso_core2 -domain PD_CORE2 -isolation_supply_set SS_ALWAYS_ON \
 set_isolation iso_core3 -domain PD_CORE3 -isolation_supply_set SS_ALWAYS_ON \
     -clamp_value 0 -applies_to outputs
 
-# ---- Step 9: Retention ----
+# 隔离控制信号（必须配对 set_isolation）
+set_isolation_control iso_core0 -domain PD_CORE0 \
+    -isolation_signal pmu_core0_iso_en -isolation_sense high -location parent
+set_isolation_control iso_core1 -domain PD_CORE1 \
+    -isolation_signal pmu_core1_iso_en -isolation_sense high -location parent
+set_isolation_control iso_core2 -domain PD_CORE2 \
+    -isolation_signal pmu_core2_iso_en -isolation_sense high -location parent
+set_isolation_control iso_core3 -domain PD_CORE3 \
+    -isolation_signal pmu_core3_iso_en -isolation_sense high -location parent
+
+# ---- Step 9: Retention + 单元映射 ----
 set_retention ret_core0 -domain PD_CORE0 -retention_supply_set SS_ALWAYS_ON \
     -save_signal {pmu_core0_save high} -restore_signal {pmu_core0_restore high}
 set_retention ret_core1 -domain PD_CORE1 -retention_supply_set SS_ALWAYS_ON \
@@ -795,6 +978,12 @@ set_retention ret_core2 -domain PD_CORE2 -retention_supply_set SS_ALWAYS_ON \
     -save_signal {pmu_core2_save high} -restore_signal {pmu_core2_restore high}
 set_retention ret_core3 -domain PD_CORE3 -retention_supply_set SS_ALWAYS_ON \
     -save_signal {pmu_core3_save high} -restore_signal {pmu_core3_restore high}
+
+# Retention 单元映射（可选）
+map_retention_cell ret_core0 -domain PD_CORE0 -lib_cells {SDFFRQN_RET_D1}
+map_retention_cell ret_core1 -domain PD_CORE1 -lib_cells {SDFFRQN_RET_D1}
+map_retention_cell ret_core2 -domain PD_CORE2 -lib_cells {SDFFRQN_RET_D1}
+map_retention_cell ret_core3 -domain PD_CORE3 -lib_cells {SDFFRQN_RET_D1}
 
 # ---- Step 10: 电源状态 + 仿真行为 ----
 add_power_state SS_CORE0 \
@@ -896,7 +1085,11 @@ set_simstate_behavior NORMAL -domain PD_DDR
 - [ ] `SS_ALWAYS_ON` 指向常开网络 VDD
 - [ ] Power Switch 的 control/ack 信号属于子系统常开域
 - [ ] 所有跨域输出信号都有合适的 clamp_value
+- [ ] **每个 `set_isolation` 都配对了 `set_isolation_control`**
+- [ ] **`set_isolation_control` 的 `-isolation_signal` 与 RTL 端口名匹配**
+- [ ] **`-isolation_sense` 极性与 RTL 中信号的有效电平一致**
 - [ ] Retention 的 save/restore 信号属于常开域
+- [ ] **save/restore 信号极性（high/low）与 RTL 实际行为匹配**
 
 ### 顶层 UPF 检查
 
@@ -909,11 +1102,12 @@ set_simstate_behavior NORMAL -domain PD_DDR
 ### RTL 设计检查
 
 - [ ] PMU RTL 中包含所有 Power Switch 的 control/ack 信号
-- [ ] PMU RTL 中包含所有 Isolation 的 enable 信号
-- [ ] PMU RTL 中包含所有 Retention 的 save/restore 信号
+- [ ] PMU RTL 中包含所有 Isolation 的 enable 信号（`set_isolation_control` 中引用的）
+- [ ] PMU RTL 中包含所有 Retention 的 save/restore 信号（`set_retention` 中引用的）
 - [ ] PMU 上电/断电序列正确（save → iso_en → power_off → ... → power_on → restore → iso_dis）
 - [ ] 所有 control/ack/save/restore/iso_en 信号都属于常开域
 - [ ] 各子系统 RTL 模块的实例名与 `load_upf -scope` 匹配
+- [ ] **iso_en/save/restore 信号的有效极性与 UPF 中声明的一致**
 
 ### 物理实现检查
 
@@ -945,9 +1139,9 @@ set_simstate_behavior NORMAL -domain PD_DDR
 | [Ch02-电源域定义命令](Ch02-电源域定义命令.md) | `create_power_domain` 详解 |
 | [Ch03-供电网络命令](Ch03-供电网络命令.md) | 供电端口、网络、连接命令 |
 | [Ch04-电源开关命令](Ch04-电源开关命令.md) | `create_power_switch` 与 MTCMOS |
-| [Ch05-隔离策略命令](Ch05-隔离策略命令.md) | `set_isolation` 与隔离单元 |
+| [Ch05-隔离策略命令](Ch05-隔离策略命令.md) | `set_isolation`、`set_isolation_control`、`map_isolation_cell` 与隔离单元 |
 | [Ch06-电平转换命令](Ch06-电平转换命令.md) | `set_level_shifter` 与跨压域信号 |
-| [Ch07-状态保持命令](Ch07-状态保持命令.md) | `set_retention` 与 Balloon Latch |
+| [Ch07-状态保持命令](Ch07-状态保持命令.md) | `set_retention`、`map_retention_cell` 与 Balloon Latch |
 | [Ch08-电源状态与状态表](Ch08-电源状态与状态表.md) | `add_power_state` 与功耗模式 |
 | [Ch09-UPF2.0新增特性](Ch09-UPF2.0新增特性与高级命令.md) | `load_upf`、`begin_power_model`、Supply Set |
 | [Ch10-完整SoC低功耗设计实战](Ch10-完整SoC低功耗设计实战.md) | 多核 SoC 完整 UPF 案例 |
