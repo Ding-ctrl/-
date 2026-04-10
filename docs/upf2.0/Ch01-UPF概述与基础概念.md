@@ -295,9 +295,14 @@ add_power_state PD_CPU.primary \
 upf_version 2.0
 
 # ----- 2. 创建电源域 -----
-create_power_domain PD_TOP -include_scope
-create_power_domain PD_CPU -elements {u_cpu}
-create_power_domain PD_GPU -elements {u_gpu}
+# 注意：通过 -supply {primary SS_XXX} 直接绑定供电集合，
+# 无需再使用 UPF 1.0 的 set_domain_supply_net 命令
+create_power_domain PD_TOP -include_scope \
+    -supply {primary SS_TOP}
+create_power_domain PD_CPU -elements {u_cpu} \
+    -supply {primary SS_CPU}
+create_power_domain PD_GPU -elements {u_gpu} \
+    -supply {primary SS_GPU}
 
 # ----- 3. 定义供电网络 -----
 create_supply_net VDD -domain PD_TOP       ;# 全局常开电源
@@ -326,20 +331,7 @@ create_supply_set SS_GPU \
     -function {power VDD_GPU} \
     -function {ground VSS}
 
-# ----- 7. 设置域的供电 -----
-set_domain_supply_net PD_TOP \
-    -primary_power_net VDD \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_CPU \
-    -primary_power_net VDD_CPU \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_GPU \
-    -primary_power_net VDD_GPU \
-    -primary_ground_net VSS
-
-# ----- 8. 定义电源开关 -----
+# ----- 7. 定义电源开关 -----
 # CPU 域电源开关：VDD 经过 SW_CPU 切换后输出 VDD_CPU
 create_power_switch SW_CPU \
     -domain PD_CPU \
@@ -358,22 +350,21 @@ create_power_switch SW_GPU \
     -on_state {gpu_on vin {ctrl}} \
     -ack_port {ack gpu_pwr_ack {gpu_on}}
 
-# ----- 9. 设置隔离策略 -----
+# ----- 8. 设置隔离策略 -----
+# UPF 2.0: 使用 -isolation_supply_set 引用供电集合
 set_isolation iso_cpu \
     -domain PD_CPU \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_TOP \
     -clamp_value 0 \
     -applies_to outputs
 
 set_isolation iso_gpu \
     -domain PD_GPU \
-    -isolation_power_net VDD \
-    -isolation_ground_net VSS \
+    -isolation_supply_set SS_TOP \
     -clamp_value 0 \
     -applies_to outputs
 
-# ----- 10. 设置电平转换策略 -----
+# ----- 9. 设置电平转换策略 -----
 set_level_shifter ls_cpu_to_top \
     -domain PD_CPU \
     -applies_to outputs \
@@ -384,27 +375,27 @@ set_level_shifter ls_gpu_to_top \
     -applies_to outputs \
     -rule both
 
-# ----- 11. 设置保持策略 -----
+# ----- 10. 设置保持策略 -----
+# UPF 2.0: 使用 -retention_supply_set 引用供电集合
 set_retention ret_cpu \
     -domain PD_CPU \
-    -retention_power_net VDD \
-    -retention_ground_net VSS \
+    -retention_supply_set SS_TOP \
     -save_signal {save_cpu high} \
     -restore_signal {restore_cpu high}
 
 set_retention ret_gpu \
     -domain PD_GPU \
-    -retention_power_net VDD \
-    -retention_ground_net VSS \
+    -retention_supply_set SS_TOP \
     -save_signal {save_gpu high} \
     -restore_signal {restore_gpu high}
 
-# ----- 12. 定义电源状态 -----
-add_power_state PD_TOP.primary -state {FULL_ON -supply_expr {power == `{FULL_ON, 0.9}}}
-add_power_state PD_CPU.primary -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
-                               -state {OFF -supply_expr {power == `{OFF}}}
-add_power_state PD_GPU.primary -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
-                               -state {OFF -supply_expr {power == `{OFF}}}
+# ----- 11. 定义电源状态 -----
+# UPF 2.0: 直接对供电集合定义状态
+add_power_state SS_TOP -state {FULL_ON -supply_expr {power == `{FULL_ON, 0.9}}}
+add_power_state SS_CPU -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
+                       -state {OFF -supply_expr {power == `{OFF}}}
+add_power_state SS_GPU -state {ON  -supply_expr {power == `{FULL_ON, 0.9}}} \
+                       -state {OFF -supply_expr {power == `{OFF}}}
 ```
 
 ---

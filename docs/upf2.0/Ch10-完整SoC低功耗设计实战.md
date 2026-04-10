@@ -76,28 +76,38 @@ upf_version 2.0
 # 顶层域（常开域）
 # 芯片上: 包含 PMU, GIC, Timer, RTC, WakeUp Logic
 # 这些逻辑在任何功耗模式下都不会断电
-create_power_domain PD_TOP -include_scope
+create_power_domain PD_TOP -include_scope \
+    -supply {primary SS_TOP}
 
 # CPU 子系统域
-create_power_domain PD_CPU -elements {u_cpu_subsys}
+create_power_domain PD_CPU -elements {u_cpu_subsys} \
+    -supply {primary SS_CPU}
 
 # CPU 各核心独立域（支持大小核独立关断）
-create_power_domain PD_CORE0 -elements {u_cpu_subsys/u_core0}  ;# A55 小核
-create_power_domain PD_CORE1 -elements {u_cpu_subsys/u_core1}  ;# A55 小核
-create_power_domain PD_CORE2 -elements {u_cpu_subsys/u_core2}  ;# A76 大核
-create_power_domain PD_CORE3 -elements {u_cpu_subsys/u_core3}  ;# A76 大核
+create_power_domain PD_CORE0 -elements {u_cpu_subsys/u_core0} \
+    -supply {primary SS_CORE0}   ;# A55 小核
+create_power_domain PD_CORE1 -elements {u_cpu_subsys/u_core1} \
+    -supply {primary SS_CORE1}   ;# A55 小核
+create_power_domain PD_CORE2 -elements {u_cpu_subsys/u_core2} \
+    -supply {primary SS_CORE2}   ;# A76 大核
+create_power_domain PD_CORE3 -elements {u_cpu_subsys/u_core3} \
+    -supply {primary SS_CORE3}   ;# A76 大核
 
 # GPU 域
-create_power_domain PD_GPU -elements {u_gpu}
+create_power_domain PD_GPU -elements {u_gpu} \
+    -supply {primary SS_GPU}
 
 # NPU 域
-create_power_domain PD_NPU -elements {u_npu}
+create_power_domain PD_NPU -elements {u_npu} \
+    -supply {primary SS_NPU}
 
 # DDR 控制器域（通常不关断，但支持低功耗模式）
-create_power_domain PD_DDR -elements {u_ddr_ctrl}
+create_power_domain PD_DDR -elements {u_ddr_ctrl} \
+    -supply {primary SS_DDR}
 
 # 外设域
-create_power_domain PD_PERI -elements {u_peripherals}
+create_power_domain PD_PERI -elements {u_peripherals} \
+    -supply {primary SS_PERI}
 
 # ================================================================
 # Section 2: 供电端口与网络
@@ -177,47 +187,6 @@ create_supply_set SS_PERI \
 create_supply_set SS_ALWAYS_ON \
     -function {power VDD} \
     -function {ground VSS}
-
-# --- 为各域关联供电集合 ---
-set_domain_supply_net PD_TOP \
-    -primary_power_net VDD \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_CPU \
-    -primary_power_net VDD \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_CORE0 \
-    -primary_power_net VDD_SW_CORE0 \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_CORE1 \
-    -primary_power_net VDD_SW_CORE1 \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_CORE2 \
-    -primary_power_net VDD_SW_CORE2 \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_CORE3 \
-    -primary_power_net VDD_SW_CORE3 \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_GPU \
-    -primary_power_net VDD_SW_GPU \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_NPU \
-    -primary_power_net VDD_SW_NPU \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_DDR \
-    -primary_power_net VDD \
-    -primary_ground_net VSS
-
-set_domain_supply_net PD_PERI \
-    -primary_power_net VDD_SW_PERI \
-    -primary_ground_net VSS
 
 # ================================================================
 # Section 3: 电源开关
