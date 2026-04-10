@@ -28,7 +28,7 @@
 | [Ch08](Ch08-电源状态与状态表.md) | 电源状态与状态表 | `add_power_state`、`create_pst`、状态转换约束 |
 | [Ch09](Ch09-UPF2.0新增特性与高级命令.md) | UPF 2.0 新增特性与高级命令 | Supply Set、Repeater、Simstate、`begin_power_model` |
 | [Ch10](Ch10-完整SoC低功耗设计实战.md) | 完整 SoC 低功耗设计实战案例 | 多核 SoC 全流程 UPF 编写与验证 |
-| [流程指南](UPF编写流程指南.md) | **UPF 编写流程指南** | 11 步编写流程 + 每步的 RTL/物理实现注意事项 |
+| [流程指南](UPF编写流程指南.md) | **UPF 编写流程指南** | 层次化多文件架构（子系统 UPF + 顶层 UPF）、`load_upf` 与 `connect_supply_net` 跨层次连接、每步 RTL/物理注意事项 |
 
 ---
 
