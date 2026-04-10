@@ -254,12 +254,12 @@ sim_states: []
 | UPF 命令 | 说明 |
 |---------|------|
 | `upf_version` | UPF 版本声明 |
-| `create_power_domain` | 电源域定义 |
+| `create_power_domain` | 电源域定义 (UPF 2.0: 含 `-supply {primary}` 绑定) |
 | `create_supply_port` | 供电端口 |
 | `create_supply_net` | 供电网络 |
 | `connect_supply_net` | 端口-网络连接 |
 | `create_supply_set` | 供电集合 (UPF 2.0) |
-| `set_domain_supply_net` | 域供电分配 |
+| `set_domain_supply_net` | 域供电分配 (UPF 1.0 回退，2.0 已由 `-supply` 替代) |
 | `create_power_switch` | 电源开关 |
 | `set_isolation` | 隔离策略 |
 | `set_level_shifter` | 电平转换 |

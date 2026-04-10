@@ -73,6 +73,8 @@ supply_ports:
 #   is_top     - 是否为顶层域 (true/false)
 #   primary_power  - 主电源网络名
 #   primary_ground - 主地网络名
+#   supply_set     - 可选: 关联的供电集合名 (UPF 2.0, 生成 -supply {primary SS_XXX})
+#                    若不填，自动按命名惯例 PD_XXX → SS_XXX 匹配
 #   description    - 可选描述
 # --------------------------------
 power_domains:

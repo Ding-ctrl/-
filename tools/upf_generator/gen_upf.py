@@ -104,10 +104,26 @@ def gen_header(proj):
     return lines
 
 
-def gen_power_domains(domains):
-    """Section 1: 电源域定义"""
+def gen_power_domains(domains, version="2.0", supply_sets=None):
+    """Section 1: 电源域定义
+
+    For UPF 2.0, binds supply sets to domains via -supply {primary SS_XXX}
+    when a matching supply set is found, eliminating the need for
+    set_domain_supply_net.
+
+    Matching priority:
+      1. Explicit 'supply_set' field on the domain
+      2. Naming convention: PD_XXX → SS_XXX
+    """
     if not domains:
         return []
+
+    # Build lookup: supply_set_name -> True
+    ss_names = set()
+    if version == "2.0" and supply_sets:
+        for ss in supply_sets:
+            ss_names.add(ss["name"])
+
     lines = [
         "",
         "# ================================================================",
@@ -120,12 +136,24 @@ def gen_power_domains(domains):
             lines.append(f"\n# {desc}")
         name = d["name"]
         if d.get("is_top"):
-            lines.append(f"create_power_domain {name} -include_scope")
+            cmd = f"create_power_domain {name} -include_scope"
         else:
             elements = d.get("elements", "")
-            lines.append(
-                f"create_power_domain {name} -elements {{{elements}}}"
-            )
+            cmd = f"create_power_domain {name} -elements {{{elements}}}"
+
+        # UPF 2.0: bind supply set at domain creation
+        ss_name = d.get("supply_set")
+        if not ss_name and version == "2.0":
+            # Convention: PD_XXX → SS_XXX
+            candidate = name.replace("PD_", "SS_", 1)
+            if candidate in ss_names:
+                ss_name = candidate
+        if ss_name:
+            d["_bound_supply_set"] = True
+            lines.append(f"{cmd} \\")
+            lines.append(f"    -supply {{primary {ss_name}}}")
+        else:
+            lines.append(cmd)
     return lines
 
 
@@ -200,10 +228,11 @@ def gen_supply_network(spec):
             lines.append(f"    -function {{ground {ss['ground_net']}}}")
             lines.append("")
 
-    # Domain supply net assignment
-    if domains:
+    # Domain supply net assignment (only for domains not already bound via -supply)
+    unbound = [d for d in domains if not d.get("_bound_supply_set")]
+    if unbound:
         lines.append("# --- 为各域关联供电网络 ---")
-        for d in domains:
+        for d in unbound:
             lines.append(f"set_domain_supply_net {d['name']} \\")
             lines.append(
                 f"    -primary_power_net {d['primary_power']} \\"
@@ -477,7 +506,11 @@ def generate_upf(spec, subsystems=None, out_dir=""):
 
     all_lines = []
     all_lines.extend(gen_header(proj))
-    all_lines.extend(gen_power_domains(spec.get("power_domains", [])))
+    all_lines.extend(gen_power_domains(
+        spec.get("power_domains", []),
+        version=version,
+        supply_sets=spec.get("supply_sets", []),
+    ))
     all_lines.extend(gen_supply_network(spec))
     all_lines.extend(gen_power_switches(spec.get("power_switches", [])))
     all_lines.extend(
